@@ -1,0 +1,71 @@
+import os
+import logging
+from agents import Agent, Runner
+from prompt import SYSTEM_PROMPT
+from tools import _get_memory_tools, web_search_impl
+
+logger = logging.getLogger(__name__)
+
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+if not OPENAI_API_KEY:
+    raise RuntimeError("Missing OPENAI_API_KEY environment variable")
+
+MODEL_ID = os.getenv("MODEL_ID", "gpt-4o-2024-08-06")
+MEMORY_ID = os.getenv("MEMORY_ID")
+
+
+def create_agent(session_id: str, actor_id: str):
+    memory_tools = _get_memory_tools(
+        memory_id=MEMORY_ID, session_id=session_id, actor_id=actor_id
+    )
+    logger.info(f"Going to add memory tools: {memory_tools}")
+
+    agent_tools = [web_search_impl] + memory_tools
+
+    return Agent(
+        name="Ops_Orchestrator",
+        instructions=SYSTEM_PROMPT,  # Use your existing prompt
+        model=MODEL_ID,
+        tools=agent_tools,
+    )
+
+
+async def _call_agent(agent, prompt: str):
+    """
+    Call agent using the proper OpenAI Agents SDK Runner with detailed logging.
+    """
+    try:
+        logger.info(f"📝 Calling agent with prompt: {prompt[:100]}...")
+        logger.info(f"🤖 Agent type: {type(agent)}")
+        logger.info(
+            f"🤖 Agent name: {agent.name if hasattr(agent, 'name') else 'unknown'}"
+        )
+
+        # Use the proper OpenAI Agents SDK Runner
+        runner = Runner()
+        logger.info("🏃 Created Runner instance")
+
+        result = await runner.run(agent, prompt)
+        logger.info("✅ Agent execution completed")
+        logger.info(f"📤 Result type: {type(result)}")
+        logger.debug(f"📤 Result attributes: {dir(result)}")
+
+        # Try to get the output in different ways
+        output = None
+        if hasattr(result, "final_output"):
+            output = result.final_output
+            logger.info(f"📤 Got final_output: {output[:200] if output else 'None'}...")
+        elif hasattr(result, "output"):
+            output = result.output
+            logger.info(f"📤 Got output: {output[:200] if output else 'None'}...")
+        elif hasattr(result, "text"):
+            output = result.text
+            logger.info(f"📤 Got text: {output[:200] if output else 'None'}...")
+        else:
+            output = str(result)
+            logger.info(f"📤 Converted result to string: {output[:200]}...")
+
+        return {"output": output}
+    except Exception as e:
+        logger.error(f"❌ Error running agent: {str(e)}", exc_info=True)
+        return {"output": f"Error running agent: {str(e)}"}
