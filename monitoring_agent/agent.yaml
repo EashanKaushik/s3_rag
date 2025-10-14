@@ -1517,7 +1517,7 @@ Resources:
           DiscoveryUrl:
             Fn::ImportValue: !Sub '${CognitoStackName}-DiscoveryUrl'
           AllowedClients:
-            - Fn::ImportValue: !Sub '${CognitoStackName}-MonitoringClientId'
+            - Fn::ImportValue: !Sub '${CognitoStackName}-GatewayClientId'
       AuthorizerType: "CUSTOM_JWT"
       ProtocolConfiguration:
         Mcp:
@@ -1653,6 +1653,16 @@ Resources:
                     Required:
                       - title
                       - description
+  
+  GatewayUrlParameter:
+    Type: AWS::SSM::Parameter
+    Properties:
+      Name: '/monitoragent/agentcore/gateway/gateway_url'
+      Description: 'BedrockAgentCore Gateway URL'
+      Type: String
+      Value: !GetAtt MonitoringGateway.GatewayUrl
+      Tags:
+        Name: !Sub '${AWS::StackName}-GatewayURL'
 
   # Lambda Permission for Gateway to invoke Lambda
   MonitoringToolsLambdaPermission:

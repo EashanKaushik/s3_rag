@@ -55,7 +55,7 @@ def get_ssm_parameter(name: str, with_decryption: bool = True) -> str:
 
 
 gateway_url: Optional[str] = get_ssm_parameter(
-    "/app/customersupportvpc/gateway/gateway_url"
+    "/monitoragent/agentcore/gateway/gateway_url"
 )
 
 
