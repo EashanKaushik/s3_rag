@@ -42,13 +42,13 @@ class OpsRemediationAgentExecutor(AgentExecutor):
         if context.call_context:
             headers = context.call_context.state.get("headers", {})
             session_id = headers.get("x-amzn-bedrock-agentcore-runtime-session-id")
-            actor_id = headers.get("x-amzn-bedrock-agentcore-runtime-user-id")
+            # actor_id = headers.get("x-amzn-bedrock-agentcore-runtime-user-id")
 
         if not session_id:
             raise RuntimeError("Session ID is not set")
 
-        if not actor_id:
-            raise RuntimeError("Actor ID is not set")
+        # if not actor_id:
+        #     raise RuntimeError("Actor ID is not set")
         try:
             task_id = context.task_id
             logger.info(f"Executing task {task_id}")
@@ -71,7 +71,8 @@ class OpsRemediationAgentExecutor(AgentExecutor):
             logger.info(f"📝 User message extracted: '{user_message}'")
 
             # Get the agent instance
-            agent = await self._get_agent(session_id=session_id, actor_id=actor_id)
+            # TODO: Actor
+            agent = await self._get_agent(session_id=session_id, actor_id="Actor1")
 
             # Mark task as active
             self._active_tasks[task_id] = True

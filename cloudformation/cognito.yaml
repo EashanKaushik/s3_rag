@@ -1,6 +1,12 @@
 AWSTemplateFormatVersion: '2010-09-09'
 Description: 'Cognito User Pool with OAuth 2.0 client credentials flow for machine-to-machine (M2M) authentication. Creates two client applications (OpsOrchestrator, Monitoring) with scoped access and stores credentials in Secrets Manager with KMS encryption.'
 
+Parameters:
+  DomainName:
+    Type: String
+    Description: Cognito user pool domain name
+    Default: 'agentcore-m2m'
+  
 
 Resources:
   # Cognito User Pool for M2M Authentication
@@ -31,9 +37,7 @@ Resources:
   M2MUserPoolDomain:
     Type: AWS::Cognito::UserPoolDomain
     Properties:
-      Domain: !Sub
-        - 'agentcore-m2m-${AccountId}'
-        - AccountId: !Ref AWS::AccountId
+      Domain: !Ref DomainName
       UserPoolId: !Ref M2MUserPool
 
   # Resource Server for M2M scopes

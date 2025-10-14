@@ -23,17 +23,9 @@ Parameters:
     Type: String
     Description: Agent directory with Dockerfile of agent
 
-  AgentClientSecretArn:
+  CognitoStackName:
     Type: String
-    Description: ARN of the Agent Client Secret in Secrets Manager
-
-  DiscoveryUrl:
-    Type: String
-    Description: OAuth2 Discovery URL for authentication
-
-  ClientId:
-    Type: String
-    Description: Client Id for AgentCore runtime
+    Description: Name of the Cognito CloudFormation stack to import values from
 Resources:
   AgentCoreRuntimeExecutionRole:
     Type: AWS::IAM::Role
@@ -112,7 +104,7 @@ Resources:
                   - ssm:GetParameter
                   - ssm:GetParameters
                 Resource:
-                  - !Sub 'arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/*
+                  - !Sub 'arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/*'
               - Sid: Oauth2Token
                 Effect: Allow
                 Action:
@@ -130,6 +122,34 @@ Resources:
       Tags:
         - Key: Name
           Value: !Sub '${AWS::StackName}-Runtime-Role'
+
+  # ECR Repository for Agent Docker Images
+  AgentECRRepository:
+    Type: AWS::ECR::Repository
+    Properties:
+      ImageScanningConfiguration:
+        ScanOnPush: true
+      LifecyclePolicy:
+        LifecyclePolicyText: |
+          {
+            "rules": [
+              {
+                "rulePriority": 1,
+                "description": "Keep last 10 images",
+                "selection": {
+                  "tagStatus": "any",
+                  "countType": "imageCountMoreThan",
+                  "countNumber": 10
+                },
+                "action": {
+                  "type": "expire"
+                }
+              }
+            ]
+          }
+      Tags:
+        - Key: Name
+          Value: !Sub '${AWS::StackName}-Agent-ECR-Repository'
 
   # CodeBuild Service Role for Docker Image Build
   CodeBuildServiceRole:
@@ -251,7 +271,7 @@ Resources:
                 - docker push $ECR_REPOSITORY_URI:${IMAGE_TAG}
                 - echo "Build completed at $(date)"
                 - echo "Image tag pushed - ${IMAGE_TAG}"
-      SourceVersion: !Sub 'refs/heads/${AWS::StackName}'
+      SourceVersion: refs/heads/a2a_sample
       TimeoutInMinutes: 30
       Tags:
         - Key: Name
@@ -465,17 +485,11 @@ Resources:
           PolicyDocument:
             Version: '2012-10-17'
             Statement:
-              # - Effect: Allow
-              #   Action:
-              #     - secretsmanager:GetSecretValue
-              #   Resource:
-              #     - Fn::ImportValue: !Sub '${CognitoStackName}-WebUserPoolClientSecret'
               - Effect: Allow
                 Action:
-                  - kms:Decrypt
-                  - kms:GenerateDataKey
+                  - secretsmanager:GetSecretValue
                 Resource:
-                  Fn::ImportValue: !Sub '${CognitoStackName}-SecretsManagerKMSKeyArn'
+                  Fn::ImportValue: !Sub '${CognitoStackName}-OpsOrchestratorClientSecretArn'
         - PolicyName: BedrockIdentityAccessPolicy
           PolicyDocument:
             Version: '2012-10-17'
@@ -498,12 +512,6 @@ Resources:
                   - ecr:ListImages
                   - ecr:BatchDeleteImage
                 Resource: !GetAtt AgentECRRepository.Arn
-              - Effect: Allow
-                Action:
-                  - kms:Decrypt
-                  - kms:GenerateDataKey
-                Resource:
-                  Fn::ImportValue: !Sub '${CognitoStackName}-SecretsManagerKMSKeyArn'
               - Effect: Allow
                 Action:
                   - secretsmanager:CreateSecret
@@ -549,8 +557,10 @@ Resources:
       Environment:
         Variables:
           CODEBUILD_PROJECT_NAME: !Ref AgentDockerBuildProject
-          AGENT_CLIENT_SECRET_ARN: !Ref AgentClientSecretArn
-          DISCOVERY_URL: !Ref DiscoveryUrl
+          AGENT_CLIENT_SECRET_ARN:
+            Fn::ImportValue: !Sub '${CognitoStackName}-OpsOrchestratorClientSecretArn'
+          DISCOVERY_URL:
+            Fn::ImportValue: !Sub '${CognitoStackName}-DiscoveryUrl'
           ECR_REPOSITORY_NAME: !Ref AgentECRRepository
       Code:
         ZipFile: |
@@ -744,10 +754,43 @@ Resources:
       ServiceToken: !GetAtt CodeBuildTriggerFunction.Arn
       ProviderName: !Sub 'AgentOAuth2Provider-${AWS::StackName}'
 
+  # IAM Role for Memory Execution (required for Custom Memory Strategies)
+  MemoryExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: bedrock-agentcore.amazonaws.com
+            Action: sts:AssumeRole
+            Condition:
+              StringEquals:
+                'aws:SourceAccount': !Ref AWS::AccountId
+              ArnLike:
+                'aws:SourceArn': !Sub 'arn:aws:bedrock-agentcore:${AWS::Region}:${AWS::AccountId}:*'
+      Policies:
+        - PolicyName: MemoryBedrockModelAccess
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - bedrock:InvokeModel
+                  - bedrock:InvokeModelWithResponseStream
+                Resource:
+                  - 'arn:aws:bedrock:*::foundation-model/*'
+      Tags:
+        - Key: Name
+          Value: !Sub '${AWS::StackName}-Memory-Execution-Role'
+
   AgentMemory:
     Type: AWS::BedrockAgentCore::Memory
     Properties:
       EventExpiryDuration: 60
+      Name: !Join ['', !Split ['-', !Sub '${AWS::StackName}Memory']]
+      MemoryExecutionRoleArn: !GetAtt MemoryExecutionRole.Arn
       MemoryStrategies: 
         - CustomMemoryStrategy: 
             Name: OpsIssueTracker
@@ -810,19 +853,20 @@ Resources:
     Type: AWS::BedrockAgentCore::Runtime
     DependsOn: CodeBuildTrigger
     Properties:
-      AgentRuntimeName: !Sub '${AWS::StakcName}'
+      AgentRuntimeName: !Join ['', !Split ['-', !Sub '${AWS::StackName}']]
       RoleArn: !GetAtt AgentCoreRuntimeExecutionRole.Arn
       NetworkConfiguration:
         NetworkMode: "PUBLIC"
       AgentRuntimeArtifact:
         ContainerConfiguration:
           ContainerUri: !Sub '${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/${AgentECRRepository}:build-1'
-      ProtocolConfiguration: HTTP
+      ProtocolConfiguration: A2A
       AuthorizerConfiguration:
         CustomJWTAuthorizer:
-          DiscoveryUrl: !Ref DiscoveryUrl
+          DiscoveryUrl:
+            Fn::ImportValue: !Sub '${CognitoStackName}-DiscoveryUrl'
           AllowedClients:
-            - !Ref ClientId
+            - Fn::ImportValue: !Sub '${CognitoStackName}-OpsOrchestratorClientId'
       EnvironmentVariables:
         MODEL_ID: !Ref ModelId
         MCP_REGION: !Sub '${AWS::Region}'
@@ -832,3 +876,49 @@ Resources:
       Tags:
         Name: !Sub '${AWS::StackName}-Agent-Runtime'
 
+  # SSM Parameter for Agent Runtime ID
+  AgentRuntimeIdParameter:
+    Type: AWS::SSM::Parameter
+    Properties:
+      Name: '/opsagent/agentcore/runtime-id'
+      Description: 'BedrockAgentCore Runtime ID'
+      Type: String
+      Value: !GetAtt AgentRuntime.AgentRuntimeId
+      Tags:
+        Name: !Sub '${AWS::StackName}-AgentRuntimeId-Parameter'
+
+  # SSM Parameter for OAuth2 Provider Name
+  AgentProviderNameParameter:
+    Type: AWS::SSM::Parameter
+    Properties:
+      Name: '/opsagent/agentcore/provider-name'
+      Description: 'OAuth2 Credential Provider Name'
+      Type: String
+      Value: !Sub 'AgentOAuth2Provider-${AWS::StackName}'
+      Tags:
+        Name: !Sub '${AWS::StackName}-ProviderName-Parameter'
+
+Outputs:
+  AgentRuntimeArn:
+    Description: 'ARN of the BedrockAgentCore Runtime'
+    Value: !GetAtt AgentRuntime.AgentRuntimeArn
+    Export:
+      Name: !Sub '${AWS::StackName}-AgentRuntimeArn'
+
+  AgentRuntimeId:
+    Description: 'ID of the BedrockAgentCore Runtime'
+    Value: !GetAtt AgentRuntime.AgentRuntimeId
+    Export:
+      Name: !Sub '${AWS::StackName}-AgentRuntimeId'
+
+  AgentRuntimeName:
+    Description: 'Name of the BedrockAgentCore Runtime'
+    Value: !Ref AgentRuntime
+    Export:
+      Name: !Sub '${AWS::StackName}-AgentRuntimeName'
+  
+  AgentProviderName: 
+    Description: 'Name of the Agent provider'
+    Value: !Sub 'AgentOAuth2Provider-${AWS::StackName}'
+    Export:
+      Name: !Sub '${AWS::StackName}-AgentProviderName'
