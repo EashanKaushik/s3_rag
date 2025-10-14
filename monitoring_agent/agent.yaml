@@ -120,6 +120,7 @@ Resources:
   # ECR Repository for Agent Docker Images
   AgentECRRepository:
     Type: AWS::ECR::Repository
+    DeletionPolicy: Delete
     Properties:
       ImageScanningConfiguration:
         ScanOnPush: true
@@ -867,7 +868,7 @@ Resources:
       AgentRuntimeArtifact:
         ContainerConfiguration:
           ContainerUri: !Sub '${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/${AgentECRRepository}:build-1'
-      ProtocolConfiguration: A2A
+      ProtocolConfiguration: HTTP
       AuthorizerConfiguration:
         CustomJWTAuthorizer:
           DiscoveryUrl:
@@ -1332,6 +1333,26 @@ Resources:
                   - bedrock-agentcore:ListOauth2CredentialProviders
                   - bedrock-agentcore:GetOauth2CredentialProvider
                 Resource: '*'
+              - Effect: Allow
+                Action:
+                  - secretsmanager:CreateSecret
+                  - secretsmanager:DeleteSecret
+                Resource: '*'
+              - Effect: Allow
+                Action:
+                  - bedrock-agentcore:ListWorkloadIdentities
+                  - bedrock-agentcore:UpdateWorkloadIdentity
+                  - bedrock-agentcore:DeleteWorkloadIdentity
+                  - bedrock-agentcore:CreateWorkloadIdentity
+                Resource:
+                  - !Sub 'arn:aws:bedrock-agentcore:${AWS::Region}:${AWS::AccountId}:workload-identity-directory/*/workload-identity/*'
+                  - !Sub 'arn:aws:bedrock-agentcore:${AWS::Region}:${AWS::AccountId}:workload-identity-directory/*'
+              - Effect: Allow
+                Action:
+                  - bedrock-agentcore:GetTokenVault
+                  - bedrock-agentcore:CreateTokenVault
+                  - bedrock-agentcore:DeleteTokenVault
+                Resource: '*'
       Tags:
         - Key: Name
           Value: !Sub '${AWS::StackName}-GatewayOAuth2Setup-Role'
@@ -1460,20 +1481,49 @@ Resources:
       ServiceToken: !GetAtt GatewayOAuth2SetupFunction.Arn
       ProviderName: !Sub 'GatewayOAuth2Provider-${AWS::StackName}'
 
+  GatewayAgentCoreRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - bedrock-agentcore.amazonaws.com
+            Action:
+              - sts:AssumeRole
+      Policies:
+        - PolicyName: BedrockAgentPolicy
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Sid: InvokeFunction
+                Effect: Allow
+                Action:
+                  - lambda:InvokeFunction
+                Resource:
+                  - !GetAtt MonitoringToolsLambda.Arn
+
   # BedrockAgentCore Gateway
   MonitoringGateway:
     Type: AWS::BedrockAgentCore::Gateway
     DependsOn: GatewayOAuth2Setup
     Properties:
       Name: !Join ['', !Split ['-', !Sub '${AWS::StackName}Gateway']]
-      ProtocolConfiguration: MCP
+      Description: "Monitoring Gateway"
       AuthorizerConfiguration:
         CustomJWTAuthorizer:
           DiscoveryUrl:
             Fn::ImportValue: !Sub '${CognitoStackName}-DiscoveryUrl'
           AllowedClients:
             - Fn::ImportValue: !Sub '${CognitoStackName}-MonitoringClientId'
-      Oauth2CredentialProvider: !Sub 'GatewayOAuth2Provider-${AWS::StackName}'
+      AuthorizerType: "CUSTOM_JWT"
+      ProtocolConfiguration:
+        Mcp:
+          SearchType: "SEMANTIC"
+      ProtocolType: "MCP"
+      RoleArn: !GetAtt GatewayAgentCoreRole.Arn
       Tags:
         Name: !Sub '${AWS::StackName}-Monitoring-Gateway'
 
@@ -1481,124 +1531,128 @@ Resources:
   MonitoringGatewayTarget:
     Type: AWS::BedrockAgentCore::GatewayTarget
     Properties:
-      GatewayIdentifier: !GetAtt MonitoringGateway.GatewayId
+      CredentialProviderConfigurations:
+        - CredentialProviderType: GATEWAY_IAM_ROLE
+      Description: "Monitoring Lambda Target"
+      GatewayIdentifier: !GetAtt MonitoringGateway.GatewayIdentifier
       Name: !Join ['', !Split ['-', !Sub '${AWS::StackName}Target']]
-      LambdaTarget:
-        LambdaArn: !GetAtt MonitoringToolsLambda.Arn
-        Tools:
-          - Name: list_cloudwatch_dashboards
-            Description: List all CloudWatch dashboards in the AWS account
-            InputSchema:
-              Type: object
-              Properties:
-                accountId:
-                  Type: string
-                  Description: AWS account ID for cross-account access
-                roleName:
-                  Type: string
-                  Description: IAM role name for cross-account access
-          - Name: fetch_cloudwatch_logs_for_service
-            Description: Fetch recent CloudWatch logs for a specific AWS service
-            InputSchema:
-              Type: object
-              Properties:
-                serviceName:
-                  Type: string
-                  Description: Name of the AWS service (e.g., lambda, ec2, rds, eks, etc.)
-                accountId:
-                  Type: string
-                  Description: AWS account ID for cross-account access
-                roleName:
-                  Type: string
-                  Description: IAM role name for cross-account access
-              Required:
-                - serviceName
-          - Name: get_cloudwatch_alarms_for_service
-            Description: Get CloudWatch alarms for a specific service
-            InputSchema:
-              Type: object
-              Properties:
-                serviceName:
-                  Type: string
-                  Description: Name of the AWS service to get alarms for
-                accountId:
-                  Type: string
-                  Description: AWS account ID for cross-account access
-                roleName:
-                  Type: string
-                  Description: IAM role name for cross-account access
-              Required:
-                - serviceName
-          - Name: setup_cross_account_access
-            Description: Setup instructions for cross-account access to CloudWatch
-            InputSchema:
-              Type: object
-              Properties:
-                accountId:
-                  Type: string
-                  Description: Target AWS account ID for cross-account access
-          - Name: list_log_groups
-            Description: List all CloudWatch log groups
-            InputSchema:
-              Type: object
-              Properties:
-                accountId:
-                  Type: string
-                  Description: AWS account ID for cross-account access
-                roleName:
-                  Type: string
-                  Description: IAM role name for cross-account access
-          - Name: analyze_log_group
-            Description: Analyze a specific CloudWatch log group
-            InputSchema:
-              Type: object
-              Properties:
-                logGroupName:
-                  Type: string
-                  Description: Name of the log group to analyze
-                accountId:
-                  Type: string
-                  Description: AWS account ID for cross-account access
-                roleName:
-                  Type: string
-                  Description: IAM role name for cross-account access
-              Required:
-                - logGroupName
-          - Name: get_dashboard_summary
-            Description: Get summary of a CloudWatch dashboard
-            InputSchema:
-              Type: object
-              Properties:
-                dashboardName:
-                  Type: string
-                  Description: Name of the dashboard
-                accountId:
-                  Type: string
-                  Description: AWS account ID for cross-account access
-                roleName:
-                  Type: string
-                  Description: IAM role name for cross-account access
-              Required:
-                - dashboardName
-          - Name: create_incident_jira_ticket
-            Description: Create a JIRA ticket for an incident
-            InputSchema:
-              Type: object
-              Properties:
-                title:
-                  Type: string
-                  Description: Title of the incident ticket
-                description:
-                  Type: string
-                  Description: Detailed description of the incident
-                priority:
-                  Type: string
-                  Description: Priority level (Low, Medium, High, Critical)
-              Required:
-                - title
-                - description
-      Tags:
-        Name: !Sub '${AWS::StackName}-Monitoring-Gateway-Target'
+      TargetConfiguration:
+        Mcp:
+          Lambda:
+            LambdaArn: !GetAtt MonitoringToolsLambda.Arn
+            ToolSchema:
+              InlinePayload:
+                - Name: list_cloudwatch_dashboards
+                  Description: List all CloudWatch dashboards in the AWS account
+                  InputSchema:
+                    Type: object
+                    Properties:
+                      accountId:
+                        Type: string
+                        Description: AWS account ID for cross-account access
+                      roleName:
+                        Type: string
+                        Description: IAM role name for cross-account access
+                - Name: fetch_cloudwatch_logs_for_service
+                  Description: Fetch recent CloudWatch logs for a specific AWS service
+                  InputSchema:
+                    Type: object
+                    Properties:
+                      serviceName:
+                        Type: string
+                        Description: Name of the AWS service (e.g., lambda, ec2, rds, eks, etc.)
+                      accountId:
+                        Type: string
+                        Description: AWS account ID for cross-account access
+                      roleName:
+                        Type: string
+                        Description: IAM role name for cross-account access
+                    Required:
+                      - serviceName
+                - Name: get_cloudwatch_alarms_for_service
+                  Description: Get CloudWatch alarms for a specific service
+                  InputSchema:
+                    Type: object
+                    Properties:
+                      serviceName:
+                        Type: string
+                        Description: Name of the AWS service to get alarms for
+                      accountId:
+                        Type: string
+                        Description: AWS account ID for cross-account access
+                      roleName:
+                        Type: string
+                        Description: IAM role name for cross-account access
+                    Required:
+                      - serviceName
+                - Name: setup_cross_account_access
+                  Description: Setup instructions for cross-account access to CloudWatch
+                  InputSchema:
+                    Type: object
+                    Properties:
+                      accountId:
+                        Type: string
+                        Description: Target AWS account ID for cross-account access
+                - Name: list_log_groups
+                  Description: List all CloudWatch log groups
+                  InputSchema:
+                    Type: object
+                    Properties:
+                      accountId:
+                        Type: string
+                        Description: AWS account ID for cross-account access
+                      roleName:
+                        Type: string
+                        Description: IAM role name for cross-account access
+                - Name: analyze_log_group
+                  Description: Analyze a specific CloudWatch log group
+                  InputSchema:
+                    Type: object
+                    Properties:
+                      logGroupName:
+                        Type: string
+                        Description: Name of the log group to analyze
+                      accountId:
+                        Type: string
+                        Description: AWS account ID for cross-account access
+                      roleName:
+                        Type: string
+                        Description: IAM role name for cross-account access
+                    Required:
+                      - logGroupName
+                - Name: get_dashboard_summary
+                  Description: Get summary of a CloudWatch dashboard
+                  InputSchema:
+                    Type: object
+                    Properties:
+                      dashboardName:
+                        Type: string
+                        Description: Name of the dashboard
+                      accountId:
+                        Type: string
+                        Description: AWS account ID for cross-account access
+                      roleName:
+                        Type: string
+                        Description: IAM role name for cross-account access
+                    Required:
+                      - dashboardName
+                - Name: create_incident_jira_ticket
+                  Description: Create a JIRA ticket for an incident
+                  InputSchema:
+                    Type: object
+                    Properties:
+                      title:
+                        Type: string
+                        Description: Title of the incident ticket
+                      description:
+                        Type: string
+                        Description: Detailed description of the incident
+                      priority:
+                        Type: string
+                        Description: Priority level (Low, Medium, High, Critical)
+                    Required:
+                      - title
+                      - description
 
   # Lambda Permission for Gateway to invoke Lambda
   MonitoringToolsLambdaPermission:
@@ -1636,7 +1690,7 @@ Outputs:
 
   MonitoringGatewayId:
     Description: 'ID of the Monitoring Gateway'
-    Value: !GetAtt MonitoringGateway.GatewayId
+    Value: !GetAtt MonitoringGateway.GatewayIdentifier
     Export:
       Name: !Sub '${AWS::StackName}-MonitoringGatewayId'
 
@@ -1648,7 +1702,7 @@ Outputs:
 
   MonitoringGatewayTargetId:
     Description: 'ID of the Monitoring Gateway Target'
-    Value: !GetAtt MonitoringGatewayTarget.GatewayTargetId
+    Value: !GetAtt MonitoringGatewayTarget.TargetId
     Export:
       Name: !Sub '${AWS::StackName}-MonitoringGatewayTargetId'
 
