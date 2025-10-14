@@ -122,11 +122,12 @@ async def capture_session_id(request: Request, call_next):
         gateway_client, \
         agent_identity_token
 
-    agent_identity_token = request.headers.get(
-        "x-amzn-bedrock-agentcore-runtime-workload-accesstoken"
-    )
+    if not agent_identity_token:
+        agent_identity_token = request.headers.get(
+            "x-amzn-bedrock-agentcore-runtime-workload-accesstoken"
+        )
 
-    print(f"Agent Idenity token: {agent_identity_token}")
+        print(f"Agent Idenity token: {agent_identity_token}")
 
     session_id = request.headers.get("x-amzn-bedrock-agentcore-runtime-session-id")
 
