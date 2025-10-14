@@ -1,4 +1,3 @@
-from bedrock_agentcore.identity.auth import requires_access_token
 from bedrock_agentcore.memory import MemoryClient
 from contextlib import asynccontextmanager
 from datetime import timedelta
@@ -20,6 +19,7 @@ logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
 
 ssm = boto3.client("ssm")
+client = boto3.client("bedrock-agentcore")
 
 MODEL_ID = os.getenv("MODEL_ID", "global.anthropic.claude-sonnet-4-20250514-v1:0")
 
@@ -46,6 +46,7 @@ monitoring_hooks: Optional[MonitoringMemoryHooks] = None
 strands_agent: Optional[Agent] = None
 a2a_server: Optional[A2AServer] = None
 gateway_client: Optional[MCPClient] = None
+agent_identity_token: Optional[str] = None
 
 
 def get_ssm_parameter(name: str, with_decryption: bool = True) -> str:
@@ -58,22 +59,26 @@ gateway_url: Optional[str] = get_ssm_parameter(
 )
 
 
-@requires_access_token(
-    provider_name=GATEWAY_PROVIDER_NAME,
-    scopes=[],
-    auth_flow="M2M",
-)
-def get_gateway_access_token(access_token: str) -> str:
-    """Get OAuth2 access token for gateway."""
-    return access_token
-
-
 def create_gateway_client() -> MCPClient:
     """Create and return a gateway MCP client."""
+
+    global agent_identity_token, current_session_id
+
+    response = client.get_resource_oauth2_token(
+        workloadIdentityToken=agent_identity_token,
+        resourceCredentialProviderName=GATEWAY_PROVIDER_NAME,
+        scopes=[],
+        oauth2Flow="M2M",
+        sessionUri=current_session_id,
+        forceAuthentication=False,
+    )
+
+    gateway_access_token = response["accessToken"]
+
     return MCPClient(
         lambda: streamablehttp_client(
             url=gateway_url,
-            headers={"Authorization": f"Bearer {get_gateway_access_token()}"},
+            headers={"Authorization": f"Bearer {gateway_access_token}"},
             timeout=timedelta(seconds=120),
         )
     )
@@ -110,7 +115,20 @@ app = FastAPI(title="Monitoring Agent A2A Server", lifespan=lifespan)
 # Middleware to capture session ID and initialize agent
 @app.middleware("http")
 async def capture_session_id(request: Request, call_next):
-    global current_session_id, monitoring_hooks, strands_agent, a2a_server, gateway_client
+    global \
+        current_session_id, \
+        monitoring_hooks, \
+        strands_agent, \
+        a2a_server, \
+        gateway_client, \
+        agent_identity_token
+
+    agent_identity_token = request.headers.get(
+        "x-amzn-bedrock-agentcore-runtime-workload-accesstoken"
+    )
+
+    print(f"Agent Idenity token: {agent_identity_token}")
+
     session_id = request.headers.get("x-amzn-bedrock-agentcore-runtime-session-id")
 
     if session_id and not current_session_id:
@@ -147,10 +165,11 @@ async def capture_session_id(request: Request, call_next):
             system_prompt=SYSTEM_PROMPT,
             model=bedrock_model,
             tools=gateway_tools,
-            callback_handler=None,
             hooks=[monitoring_hooks],
         )
-        logging.info(f"Created Strands Agent with monitoring hooks and {len(gateway_tools)} tools")
+        logging.info(
+            f"Created Strands Agent with monitoring hooks and {len(gateway_tools)} tools"
+        )
 
         # Create A2A server with the initialized agent
         a2a_server = A2AServer(

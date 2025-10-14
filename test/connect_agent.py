@@ -20,8 +20,8 @@ DEFAULT_TIMEOUT = 300  # set request timeout to 5 minutes
 # Get AWS region and account ID dynamically
 account_id, region = get_aws_info()
 
-agent_id = "hosted_agent_kcnw3-OCRp8Z8CcN"
-provider_name = get_ssm_parameter("/opsagent/agentcore/provider-name")
+agent_id = "hosted_agent_monitor-YvZHocEi2B"
+provider_name = get_ssm_parameter("/monitoragent/agentcore/provider-name")
 agent_arn = f"arn:aws:bedrock-agentcore:{region}:{account_id}:runtime/{agent_id}"
 
 

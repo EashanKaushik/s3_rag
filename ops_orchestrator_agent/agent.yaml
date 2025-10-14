@@ -126,6 +126,7 @@ Resources:
   # ECR Repository for Agent Docker Images
   AgentECRRepository:
     Type: AWS::ECR::Repository
+    DeletionPolicy: Delete
     Properties:
       ImageScanningConfiguration:
         ScanOnPush: true
