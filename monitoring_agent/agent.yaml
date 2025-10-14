@@ -113,6 +113,20 @@ Resources:
                   # TODO: Scope down
                 Resource:
                   - '*'
+              - Sid: MemoryAccess
+                Effect: Allow
+                Action:
+                  - bedrock-agentcore:ListMemories
+                  - bedrock-agentcore:ListMemoryRecords
+                  - bedrock-agentcore:RetrieveMemoryRecords
+                  - bedrock-agentcore:GetMemory
+                  - bedrock-agentcore:GetMemoryRecord
+                  - bedrock-agentcore:BatchCreateMemoryRecords
+                  - bedrock-agentcore:BatchDeleteMemoryRecords
+                  - bedrock-agentcore:BatchUpdateMemoryRecords
+                Resource:
+                  - !GetAtt AgentMemory.MemoryArn
+                  - !Sub '${AgentMemory.MemoryArn}/*'
       Tags:
         - Key: Name
           Value: !Sub '${AWS::StackName}-Runtime-Role'
