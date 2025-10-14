@@ -19,7 +19,7 @@ logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
 
 ssm = boto3.client("ssm")
-client = boto3.client("bedrock-agentcore")
+agentcore_client = boto3.client("bedrock-agentcore")
 
 MODEL_ID = os.getenv("MODEL_ID", "global.anthropic.claude-sonnet-4-20250514-v1:0")
 
@@ -64,7 +64,7 @@ def create_gateway_client() -> MCPClient:
 
     global agent_identity_token, current_session_id
 
-    response = client.get_resource_oauth2_token(
+    response = agentcore_client.get_resource_oauth2_token(
         workloadIdentityToken=agent_identity_token,
         resourceCredentialProviderName=GATEWAY_PROVIDER_NAME,
         scopes=[],
