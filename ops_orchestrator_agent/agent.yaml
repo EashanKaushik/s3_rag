@@ -6,7 +6,7 @@ Parameters:
     Type: String
     Description: OpenAI API Key
 
-  ModelId:
+  OpenAIModelId:
     Type: String
     Description: OpenAI model id
     Default: 'gpt-4o-2024-08-06'
@@ -868,7 +868,7 @@ Resources:
           AllowedClients:
             - Fn::ImportValue: !Sub '${CognitoStackName}-OpsOrchestratorClientId'
       EnvironmentVariables:
-        MODEL_ID: !Ref ModelId
+        MODEL_ID: !Ref OpenAIModelId
         MCP_REGION: !Sub '${AWS::Region}'
         TAVILY_API_KEY: !Ref TavilyAPIKey
         OPENAI_API_KEY: !Ref OpenAIKey

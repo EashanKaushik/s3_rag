@@ -12,6 +12,8 @@ if not OPENAI_API_KEY:
 
 MODEL_ID = os.getenv("MODEL_ID", "gpt-4o-2024-08-06")
 MEMORY_ID = os.getenv("MEMORY_ID")
+if not MEMORY_ID:
+    raise RuntimeError("Missing MEMORY_ID environment variable")
 
 
 def create_agent(session_id: str, actor_id: str):

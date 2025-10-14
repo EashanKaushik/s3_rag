@@ -7,8 +7,8 @@ import datetime
 
 logger = logging.getLogger(__name__)
 
-SESSION_HEADER = "X-Amzn-Bedrock-AgentCore-Runtime-Session-Id"
-ACTOR_HEADER = "X-Amzn-Bedrock-AgentCore-Runtime-User-Id"
+# SESSION_HEADER = "X-Amzn-Bedrock-AgentCore-Runtime-Session-Id"
+# ACTOR_HEADER = "X-Amzn-Bedrock-AgentCore-Runtime-User-Id"
 
 
 class OpsRemediationAgentExecutor(AgentExecutor):

@@ -9,3 +9,8 @@ dependencies = [
     "bedrock-agentcore>=0.1.7",
     "boto3>=1.40.51",
 ]
+
+[tool.uv.workspace]
+members = [
+    "monitoring_agent",
+]

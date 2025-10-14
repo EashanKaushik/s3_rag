@@ -56,6 +56,8 @@ Resources:
           ScopeDescription: 'Ops Orchestrator specific access'
         - ScopeName: 'monitoring'
           ScopeDescription: 'Monitoring specific access'
+        - ScopeName: 'gateway'
+          ScopeDescription: 'Gateway specific access'
 
   # Ops Orchestrator Client for M2M Authentication
   OpsOrchestratorClient:
@@ -110,6 +112,32 @@ Resources:
         RefreshToken: days
       PreventUserExistenceErrors: 'ENABLED'
 
+  # Gateway Client for M2M Authentication
+  GatewayClient:
+    Type: AWS::Cognito::UserPoolClient
+    DependsOn: M2MResourceServer
+    Properties:
+      ClientName: 'gateway-client'
+      UserPoolId: !Ref M2MUserPool
+      GenerateSecret: true
+      ExplicitAuthFlows: []
+      SupportedIdentityProviders:
+        - COGNITO
+      AllowedOAuthFlows:
+        - client_credentials
+      AllowedOAuthFlowsUserPoolClient: true
+      AllowedOAuthScopes:
+        - !Sub '${AWS::StackName}-resource-server/read'
+        - !Sub '${AWS::StackName}-resource-server/gateway'
+      AccessTokenValidity: 1
+      IdTokenValidity: 1
+      RefreshTokenValidity: 1
+      TokenValidityUnits:
+        AccessToken: hours
+        IdToken: hours
+        RefreshToken: days
+      PreventUserExistenceErrors: 'ENABLED'
+
   # Secrets Manager Secrets for Client Configuration
   OpsOrchestratorClientSecret:
     Type: AWS::SecretsManager::Secret
@@ -143,6 +171,22 @@ Resources:
         - Key: Name
           Value: !Sub '${AWS::StackName}-Monitoring-ClientSecret'
 
+  GatewayClientSecret:
+    Type: AWS::SecretsManager::Secret
+    Properties:
+      Name: !Sub '${AWS::StackName}/gateway/client-config'
+      Description: 'Gateway Client configuration for M2M authentication'
+      SecretString: !Sub |
+        {
+          "client_id": "${GatewayClient}",
+          "user_pool_id": "${M2MUserPool}",
+          "token_endpoint": "https://${M2MUserPoolDomain}.auth.${AWS::Region}.amazoncognito.com/oauth2/token",
+          "cognito_discovery_url": "https://cognito-idp.${AWS::Region}.amazonaws.com/${M2MUserPool}/.well-known/openid-configuration"
+        }
+      Tags:
+        - Key: Name
+          Value: !Sub '${AWS::StackName}-Gateway-ClientSecret'
+
   # IAM Role for Lambda function
   ClientSecretLambdaRole:
     Type: AWS::IAM::Role
@@ -172,6 +216,7 @@ Resources:
                 Resource:
                   - !Ref OpsOrchestratorClientSecret
                   - !Ref MonitoringClientSecret
+                  - !Ref GatewayClientSecret
 
   # Lambda function to retrieve client secrets
   ClientSecretLambda:
@@ -288,6 +333,17 @@ Resources:
       SecretArn: !Ref MonitoringClientSecret
       ClientType: Monitoring
 
+  # Custom resource to update Gateway client secret
+  GatewayClientSecretUpdater:
+    Type: AWS::CloudFormation::CustomResource
+    DependsOn: GatewayClientSecret
+    Properties:
+      ServiceToken: !GetAtt ClientSecretLambda.Arn
+      UserPoolId: !Ref M2MUserPool
+      ClientId: !Ref GatewayClient
+      SecretArn: !Ref GatewayClientSecret
+      ClientType: Gateway
+
 Outputs:
   DiscoveryUrl:
     Description: 'OAuth2 Discovery URL for authentication'
@@ -318,3 +374,15 @@ Outputs:
     Value: !Ref MonitoringClientSecret
     Export:
       Name: !Sub '${AWS::StackName}-MonitoringClientSecretArn'
+
+  GatewayClientId:
+    Description: 'Gateway Client ID'
+    Value: !Ref GatewayClient
+    Export:
+      Name: !Sub '${AWS::StackName}-GatewayClientId'
+
+  GatewayClientSecretArn:
+    Description: 'Gateway Client Secret ARN'
+    Value: !Ref GatewayClientSecret
+    Export:
+      Name: !Sub '${AWS::StackName}-GatewayClientSecretArn'

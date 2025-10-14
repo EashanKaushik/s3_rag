@@ -878,6 +878,7 @@ Resources:
         MODEL_ID: !Ref BedrockModelId
         MCP_REGION: !Sub '${AWS::Region}'
         MEMORY_ID: !GetAtt AgentMemory.MemoryId
+        GATEWAY_PROVIDER_NAME: !Sub 'GatewayOAuth2Provider-${AWS::StackName}'
       Tags:
         Name: !Sub '${AWS::StackName}-Agent-Runtime'
 
