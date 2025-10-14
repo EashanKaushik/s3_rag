@@ -69,7 +69,6 @@ def create_gateway_client() -> MCPClient:
         resourceCredentialProviderName=GATEWAY_PROVIDER_NAME,
         scopes=[],
         oauth2Flow="M2M",
-        sessionUri=current_session_id,
         forceAuthentication=False,
     )
 
