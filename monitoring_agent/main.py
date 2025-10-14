@@ -74,6 +74,7 @@ def create_gateway_client() -> MCPClient:
 
     gateway_access_token = response["accessToken"]
 
+    print(f"Gateway Access token: {gateway_access_token}")
     return MCPClient(
         lambda: streamablehttp_client(
             url=gateway_url,
