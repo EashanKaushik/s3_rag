@@ -22,7 +22,7 @@ MONITOR_AGENT_ARN = (
     f"arn:aws:bedrock-agentcore:{region}:{account_id}:runtime/{MONITOR_AGENT_ID}"
 )
 
-WEBSEARCH_AGENT_ID = "hosted_agent_kcnw3-OCRp8Z8CcN"
+WEBSEARCH_AGENT_ID = get_ssm_parameter("/websearchagent/agentcore/runtime-id")
 WEBSEARCH_PROVIDER_NAME = get_ssm_parameter("/websearchagent/agentcore/provider-name")
 WEBSEARCH_AGENT_ARN = (
     f"arn:aws:bedrock-agentcore:{region}:{account_id}:runtime/{WEBSEARCH_AGENT_ID}"

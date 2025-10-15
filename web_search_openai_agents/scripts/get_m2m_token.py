@@ -1,5 +1,5 @@
 """
-Script to get M2M token for monitoring agent using bedrock_agentcore.identity.auth
+Script to get M2M token for web search agent using bedrock_agentcore.identity.auth
 """
 
 import sys
@@ -35,10 +35,10 @@ def get_token(provider_name: str) -> str:
 def main():
     try:
         # Get provider name from SSM
-        provider_name = get_ssm_parameter("/monitoragent/agentcore/provider-name")
+        provider_name = get_ssm_parameter("/websearchagent/agentcore/provider-name")
 
         # Get agent runtime ID from SSM
-        agent_id = get_ssm_parameter("/monitoragent/agentcore/runtime-id")
+        agent_id = get_ssm_parameter("/websearchagent/agentcore/runtime-id")
 
         # Get AWS info
         account_id, region = get_aws_info()

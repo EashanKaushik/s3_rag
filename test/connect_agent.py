@@ -22,17 +22,17 @@ DEFAULT_TIMEOUT = 300  # set request timeout to 5 minutes
 account_id, region = get_aws_info()
 
 moniter_agent_id = get_ssm_parameter("/monitoragent/agentcore/runtime-id")
-websearch_agent_id = "hosted_agent_kcnw3-OCRp8Z8CcN"
+websearch_agent_id = get_ssm_parameter("/websearchagent/agentcore/runtime-id")
 
 moniter_provider_name = get_ssm_parameter("/monitoragent/agentcore/provider-name")
 moniter_agent_arn = (
     f"arn:aws:bedrock-agentcore:{region}:{account_id}:runtime/{moniter_agent_id}"
 )
 
-# websearch_provider_name = get_ssm_parameter("/websearchagent/agentcore/provider-name")
-# websearch_agent_arn = (
-#     f"arn:aws:bedrock-agentcore:{region}:{account_id}:runtime/{websearch_agent_id}"
-# )
+websearch_provider_name = get_ssm_parameter("/websearchagent/agentcore/provider-name")
+websearch_agent_arn = (
+    f"arn:aws:bedrock-agentcore:{region}:{account_id}:runtime/{websearch_agent_id}"
+)
 
 
 def create_message(*, role: Role = Role.user, text: str) -> Message:

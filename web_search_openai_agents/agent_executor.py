@@ -1,14 +1,28 @@
-from a2a.server.agent_execution.agent_executor import AgentExecutor
-import logging
-from agent import _call_agent, create_agent
-from a2a.server.events.event_queue import EventQueue
-from a2a.server.agent_execution.context import RequestContext
 import datetime
+import logging
+import uuid
+
+from a2a.server.agent_execution import AgentExecutor, RequestContext
+from a2a.server.events import EventQueue
+from a2a.server.tasks import TaskUpdater
+from a2a.types import (
+    InternalError,
+    InvalidParamsError,
+    Message,
+    Part,
+    Role,
+    TaskState,
+    TaskStatus,
+    TaskStatusUpdateEvent,
+    TextPart,
+    UnsupportedOperationError,
+)
+from a2a.utils import new_agent_text_message
+from a2a.utils.errors import ServerError
+
+from agent import _call_agent, create_agent
 
 logger = logging.getLogger(__name__)
-
-# SESSION_HEADER = "X-Amzn-Bedrock-AgentCore-Runtime-Session-Id"
-# ACTOR_HEADER = "X-Amzn-Bedrock-AgentCore-Runtime-User-Id"
 
 
 class WebSearchAgentExecutor(AgentExecutor):
@@ -26,9 +40,9 @@ class WebSearchAgentExecutor(AgentExecutor):
     async def _get_agent(self, session_id: str, actor_id: str):
         """Lazily initialize and return the agent"""
         if self._agent is None:
-            logger.info("Creating lead orchestrator agent...")
+            logger.info("Creating web search agent...")
             self._agent = create_agent(session_id=session_id, actor_id=actor_id)
-            logger.info("Lead orchestrator agent created successfully")
+            logger.info("Web search agent created successfully")
         return self._agent
 
     async def execute(
@@ -39,43 +53,52 @@ class WebSearchAgentExecutor(AgentExecutor):
         """
         Execute the agent's logic for a given request context.
         """
+        # Extract session and actor IDs from headers
+        session_id = None
+        # TODO: Remove Actor Id
+        actor_id = "Actor1"  # Default actor ID
+
         if context.call_context:
             headers = context.call_context.state.get("headers", {})
             session_id = headers.get("x-amzn-bedrock-agentcore-runtime-session-id")
-            # actor_id = headers.get("x-amzn-bedrock-agentcore-runtime-user-id")
+            actor_id = headers.get("x-amzn-bedrock-agentcore-runtime-user-id", actor_id)
 
         if not session_id:
-            raise RuntimeError("Session ID is not set")
+            logger.error("Session ID is not set")
+            raise ServerError(error=InvalidParamsError())
 
-        # if not actor_id:
-        #     raise RuntimeError("Actor ID is not set")
+        task = context.current_task
+        if not task:
+            logger.error("No current task in context")
+            raise ServerError(error=InvalidParamsError())
+
+        updater = TaskUpdater(event_queue, task.id, task.context_id)
+        task_id = context.task_id
+
         try:
-            task_id = context.task_id
-            logger.info(f"Executing task {task_id}")
+            logger.info(f"Executing task {task.id}")
 
-            # Extract the user message from context
-            user_message = ""
+            # Extract user input
+            user_message = context.get_user_input()
+            if not user_message:
+                logger.error("No user message found in context")
+                raise ServerError(error=InvalidParamsError())
 
-            if context.message and context.message.parts:
-                for part in context.message.parts:
-                    # A2A protocol wraps TextPart in a Part container with 'root' attribute
-                    if hasattr(part, "root") and hasattr(part.root, "text"):
-                        user_message += part.root.text
-                    # Fallback: direct text attribute
-                    elif hasattr(part, "text"):
-                        user_message += part.text
-                    # Fallback: dict access
-                    elif isinstance(part, dict) and "text" in part:
-                        user_message += part["text"]
-
-            logger.info(f"📝 User message extracted: '{user_message}'")
+            logger.info(f"User message: '{user_message}'")
 
             # Get the agent instance
-            # TODO: Actor
-            agent = await self._get_agent(session_id=session_id, actor_id="Actor1")
+            agent = await self._get_agent(session_id=session_id, actor_id=actor_id)
 
             # Mark task as active
             self._active_tasks[task_id] = True
+
+            # Update task to working state
+            await updater.update_status(
+                TaskState.working,
+                new_agent_text_message(
+                    "Processing your request...", task.context_id, task.id
+                ),
+            )
 
             # Call the agent
             logger.info("Calling agent with user message...")
@@ -86,70 +109,22 @@ class WebSearchAgentExecutor(AgentExecutor):
                 logger.info(f"Task {task_id} was cancelled")
                 return
 
-            # Publish completion event
-            from a2a.types import (
-                TaskStatusUpdateEvent,
-                TaskState,
-                TaskStatus,
-                Message,
-                TextPart,
-                Role,
+            # Add result as artifact and complete
+            output_text = result.get("output", "")
+            await updater.add_artifact(
+                [Part(root=TextPart(text=output_text))],
+                name="search_result",
             )
-            import uuid
-
-            await event_queue.enqueue_event(
-                TaskStatusUpdateEvent(
-                    context_id=context.context_id,
-                    task_id=task_id,
-                    final=True,
-                    status=TaskStatus(
-                        state=TaskState.completed,
-                        message=Message(
-                            messageId=str(uuid.uuid4()),
-                            role=Role.user,  # Use Role.user
-                            parts=[TextPart(text=result.get("output", ""))],
-                        ),
-                        timestamp=datetime.datetime.now(
-                            datetime.timezone.utc
-                        ).isoformat(),
-                    ),
-                )
-            )
+            await updater.complete()
 
             logger.info(f"Task {task_id} completed successfully")
 
+        except ServerError:
+            # Re-raise ServerError as-is
+            raise
         except Exception as e:
             logger.error(f"Error executing task {task_id}: {e}", exc_info=True)
-
-            # Publish failure event
-            from a2a.types import (
-                TaskStatusUpdateEvent,
-                TaskState,
-                TaskStatus,
-                Message,
-                TextPart,
-                Role,
-            )
-            import uuid
-
-            await event_queue.enqueue_event(
-                TaskStatusUpdateEvent(
-                    context_id=context.context_id,
-                    task_id=task_id,
-                    final=True,
-                    status=TaskStatus(
-                        state=TaskState.failed,
-                        message=Message(
-                            messageId=str(uuid.uuid4()),
-                            role=Role.user,  # Use Role.user
-                            parts=[TextPart(text=str(e))],
-                        ),
-                        timestamp=datetime.datetime.now(
-                            datetime.timezone.utc
-                        ).isoformat(),
-                    ),
-                )
-            )
+            raise ServerError(error=InternalError()) from e
         finally:
             # Clean up task from active tasks
             self._active_tasks.pop(task_id, None)
@@ -162,44 +137,21 @@ class WebSearchAgentExecutor(AgentExecutor):
         """
         Request the agent to cancel an ongoing task.
         """
-        try:
-            task_id = context.task_id
-            logger.info(f"Cancelling task {task_id}")
+        task_id = context.task_id
+        logger.info(f"Cancelling task {task_id}")
 
+        try:
             # Mark task as cancelled
             self._active_tasks[task_id] = False
 
-            # Publish cancellation event
-            from a2a.types import (
-                TaskStatusUpdateEvent,
-                TaskState,
-                TaskStatus,
-                Message,
-                TextPart,
-                Role,
-            )
-            import uuid
-
-            await event_queue.enqueue_event(
-                TaskStatusUpdateEvent(
-                    context_id=context.context_id,
-                    task_id=task_id,
-                    final=True,
-                    status=TaskStatus(
-                        state=TaskState.canceled,
-                        message=Message(
-                            messageId=str(uuid.uuid4()),
-                            role=Role.user,  # Use Role.user
-                            parts=[TextPart(text="Task cancelled by user")],
-                        ),
-                        timestamp=datetime.datetime.now(
-                            datetime.timezone.utc
-                        ).isoformat(),
-                    ),
-                )
-            )
-
-            logger.info(f"Task {task_id} cancelled successfully")
+            task = context.current_task
+            if task:
+                updater = TaskUpdater(event_queue, task.id, task.context_id)
+                await updater.cancel()
+                logger.info(f"Task {task_id} cancelled successfully")
+            else:
+                logger.warning(f"No task found for task_id {task_id}")
 
         except Exception as e:
             logger.error(f"Error cancelling task {task_id}: {e}", exc_info=True)
+            raise ServerError(error=InternalError()) from e
