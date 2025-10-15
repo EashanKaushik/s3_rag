@@ -11,9 +11,9 @@ logger = logging.getLogger(__name__)
 # ACTOR_HEADER = "X-Amzn-Bedrock-AgentCore-Runtime-User-Id"
 
 
-class OpsRemediationAgentExecutor(AgentExecutor):
+class WebSearchAgentExecutor(AgentExecutor):
     """
-    Agent executor that wraps the OpenAI-based ops remediation agent
+    Agent executor that wraps the OpenAI-based web search agent
     for A2A server compatibility
     """
 
@@ -21,7 +21,7 @@ class OpsRemediationAgentExecutor(AgentExecutor):
         """Initialize the executor"""
         self._agent = None
         self._active_tasks = {}
-        logger.info("OpsRemediationAgentExecutor initialized")
+        logger.info("WebSearchAgentExecutor initialized")
 
     async def _get_agent(self, session_id: str, actor_id: str):
         """Lazily initialize and return the agent"""

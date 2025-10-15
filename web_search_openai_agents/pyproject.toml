@@ -1,7 +1,7 @@
 [project]
-name = "ops-orchestrator-agent"
+name = "web-search-openai-agents"
 version = "0.1.0"
-description = "Ops Orchestrator Agent using OpenAI Agents SDK on AgentCore Runtime"
+description = "Web Search using OpenAI Agents SDK on AgentCore Runtime"
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [

@@ -1,7 +1,7 @@
 [project]
-name = "monitoring-agent"
+name = "monitoring-strands-agent"
 version = "0.1.0"
-description = "Monitoring Agent using Strands on AgentCore Runtime"
+description = "Monitoring Agent using Strands SDK on AgentCore Runtime"
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [

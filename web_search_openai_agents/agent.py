@@ -25,8 +25,8 @@ def create_agent(session_id: str, actor_id: str):
     agent_tools = [web_search_impl] + memory_tools
 
     return Agent(
-        name="Ops_Orchestrator",
-        instructions=SYSTEM_PROMPT,  # Use your existing prompt
+        name="WebSearch_Agent",
+        instructions=SYSTEM_PROMPT,
         model=MODEL_ID,
         tools=agent_tools,
     )

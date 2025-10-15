@@ -2,7 +2,7 @@ from bedrock_agentcore.memory import MemoryClient
 from context import MonitoringAgentContext
 from contextlib import asynccontextmanager
 from datetime import timedelta
-from fastapi import FastAPI, Request, Header
+from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 from mcp.client.streamable_http import streamablehttp_client
 from memory_hook import MonitoringMemoryHooks
@@ -11,7 +11,6 @@ from strands import Agent
 from strands.models import BedrockModel
 from strands.multiagent.a2a import A2AServer
 from strands.tools.mcp.mcp_client import MCPClient
-from typing import Optional
 import asyncio
 import boto3
 import logging

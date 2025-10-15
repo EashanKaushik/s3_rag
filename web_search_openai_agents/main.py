@@ -2,7 +2,7 @@ from a2a.server.apps import A2AStarletteApplication
 from a2a.server.request_handlers import DefaultRequestHandler
 from a2a.server.tasks import InMemoryTaskStore
 from a2a.types import AgentCapabilities, AgentCard, AgentSkill
-from agent_executor import OpsRemediationAgentExecutor
+from agent_executor import WebSearchAgentExecutor
 from starlette.responses import JSONResponse
 import logging
 import os
@@ -13,8 +13,8 @@ logger = logging.getLogger(__name__)
 runtime_url = os.getenv("AGENTCORE_RUNTIME_URL", "http://127.0.0.1:9000/")
 
 agent_card = AgentCard(
-    name="Ops Remediation Agent",
-    description="Operations remediation agent that provides documentation and solutions for JIRA tickets by searching AWS documentation",
+    name="WebSearch Agent",
+    description="Web search agent that provides AWS documentation and solutions by searching for relevant information",
     url=runtime_url,
     version="1.0.0",
     defaultInputModes=["text/plain"],
@@ -22,10 +22,10 @@ agent_card = AgentCard(
     capabilities=AgentCapabilities(streaming=False, pushNotifications=False),
     skills=[
         AgentSkill(
-            id="ops-remediation",
-            name="Operations Remediation",
-            description="Search AWS documentation and provide remediation strategies for operational issues",
-            tags=["operations", "remediation", "aws", "documentation"],
+            id="websearch",
+            name="Web Search",
+            description="Search AWS documentation and provide solutions for operational issues",
+            tags=["websearch", "aws", "documentation", "solutions"],
             examples=[
                 "Find documentation for fixing high CPU usage in EC2",
                 "Search for solutions to RDS connection timeout issues",
@@ -33,13 +33,13 @@ agent_card = AgentCard(
             ],
         ),
         AgentSkill(
-            id="jira-documentation",
-            name="JIRA Documentation",
-            description="Provide documentation and updates for JIRA tickets",
-            tags=["jira", "documentation", "ticketing"],
+            id="aws-documentation",
+            name="AWS Documentation Search",
+            description="Search and retrieve AWS documentation and best practices",
+            tags=["aws", "documentation", "search"],
             examples=[
-                "Document the fix for JIRA ticket OPS-123",
-                "Provide status update for incident ticket",
+                "Search for AWS CloudWatch best practices",
+                "Find AWS troubleshooting guides",
             ],
         ),
     ],
@@ -47,7 +47,7 @@ agent_card = AgentCard(
 
 # Create request handler with executor
 request_handler = DefaultRequestHandler(
-    agent_executor=OpsRemediationAgentExecutor(), task_store=InMemoryTaskStore()
+    agent_executor=WebSearchAgentExecutor(), task_store=InMemoryTaskStore()
 )
 
 # Create A2A server
@@ -61,7 +61,7 @@ app = server.build()
 async def health_check(request):
     """Health check endpoint"""
     return JSONResponse(
-        {"status": "healthy", "agent": "ops_remediation_agent", "version": "1.0.0"}
+        {"status": "healthy", "agent": "websearch_agent", "version": "1.0.0"}
     )
 
 

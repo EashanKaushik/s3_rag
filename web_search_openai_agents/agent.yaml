@@ -490,7 +490,7 @@ Resources:
                 Action:
                   - secretsmanager:GetSecretValue
                 Resource:
-                  Fn::ImportValue: !Sub '${CognitoStackName}-OpsOrchestratorClientSecretArn'
+                  Fn::ImportValue: !Sub '${CognitoStackName}-WebSearchClientSecretArn'
         - PolicyName: BedrockIdentityAccessPolicy
           PolicyDocument:
             Version: '2012-10-17'
@@ -559,7 +559,7 @@ Resources:
         Variables:
           CODEBUILD_PROJECT_NAME: !Ref AgentDockerBuildProject
           AGENT_CLIENT_SECRET_ARN:
-            Fn::ImportValue: !Sub '${CognitoStackName}-OpsOrchestratorClientSecretArn'
+            Fn::ImportValue: !Sub '${CognitoStackName}-WebSearchClientSecretArn'
           DISCOVERY_URL:
             Fn::ImportValue: !Sub '${CognitoStackName}-DiscoveryUrl'
           ECR_REPOSITORY_NAME: !Ref AgentECRRepository
@@ -792,29 +792,29 @@ Resources:
       EventExpiryDuration: 60
       Name: !Join ['', !Split ['-', !Sub '${AWS::StackName}Memory']]
       MemoryExecutionRoleArn: !GetAtt MemoryExecutionRole.Arn
-      MemoryStrategies: 
-        - CustomMemoryStrategy: 
-            Name: OpsIssueTracker
+      MemoryStrategies:
+        - CustomMemoryStrategy:
+            Name: SearchQueryTracker
             Namespaces:
-              - "/technical-issues/{actorId}"
+              - "/search-queries/{actorId}"
             Configuration:
               SemanticOverride:
                 Extraction:
                   AppendToPrompt: |
                     Human: You are tasked with analyzing conversations to extract the user's preferences. You'll be analyzing two sets of data:
 
-                    Follow some of the user preferences below as it pertains to memory related to incident response logging and other issue triaging in the incident response xml tags below:
-                    <incident_response>
-                    1. Capture user preferences and interactions/repetitive issues that the agent encounters.
+                    Follow some of the user preferences below as it pertains to memory related to web searches and AWS documentation queries:
+                    <search_preferences>
+                    1. Capture user preferences and recurring search patterns that the agent encounters.
 
                     2. Make sure to look out for the past conversation history for the user and keep that in consideration while interacting with the user.
 
-                    3. Always be focussed on an incident response logging use cases in terms of user preferences
+                    3. Always be focused on web search and AWS documentation queries in terms of user preferences
 
-                    4. Make sure to keep in mind the previous fixes so if another similar one has occurred, you can provide that previously proposed solution
+                    4. Make sure to keep in mind the previous searches and solutions so if a similar query occurs, you can leverage past findings
 
-                    5. Always extract the solutions that the agent is providing and the key issues.
-                    </incident_response>
+                    5. Always extract the search queries, documentation sources, and key solutions provided.
+                    </search_preferences>
 
                     <past_conversation>
                     [Past conversations between the user and system will be placed here for context]
@@ -867,7 +867,7 @@ Resources:
           DiscoveryUrl:
             Fn::ImportValue: !Sub '${CognitoStackName}-DiscoveryUrl'
           AllowedClients:
-            - Fn::ImportValue: !Sub '${CognitoStackName}-OpsOrchestratorClientId'
+            - Fn::ImportValue: !Sub '${CognitoStackName}-WebSearchClientId'
       EnvironmentVariables:
         MODEL_ID: !Ref OpenAIModelId
         MCP_REGION: !Sub '${AWS::Region}'
@@ -881,7 +881,7 @@ Resources:
   AgentRuntimeIdParameter:
     Type: AWS::SSM::Parameter
     Properties:
-      Name: '/opsagent/agentcore/runtime-id'
+      Name: '/websearchagent/agentcore/runtime-id'
       Description: 'BedrockAgentCore Runtime ID'
       Type: String
       Value: !GetAtt AgentRuntime.AgentRuntimeId
@@ -892,7 +892,7 @@ Resources:
   AgentProviderNameParameter:
     Type: AWS::SSM::Parameter
     Properties:
-      Name: '/opsagent/agentcore/provider-name'
+      Name: '/websearchagent/agentcore/provider-name'
       Description: 'OAuth2 Credential Provider Name'
       Type: String
       Value: !Sub 'AgentOAuth2Provider-${AWS::StackName}'

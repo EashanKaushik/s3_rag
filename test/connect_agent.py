@@ -21,18 +21,19 @@ DEFAULT_TIMEOUT = 300  # set request timeout to 5 minutes
 # Get AWS region and account ID dynamically
 account_id, region = get_aws_info()
 
-moniter_agent_id = "hosted_agent_monitor-YvZHocEi2B"
-ops_agent_id = "hosted_agent_kcnw3-OCRp8Z8CcN"
+moniter_agent_id = get_ssm_parameter("/monitoragent/agentcore/runtime-id")
+websearch_agent_id = "hosted_agent_kcnw3-OCRp8Z8CcN"
 
 moniter_provider_name = get_ssm_parameter("/monitoragent/agentcore/provider-name")
 moniter_agent_arn = (
     f"arn:aws:bedrock-agentcore:{region}:{account_id}:runtime/{moniter_agent_id}"
 )
 
-ops_provider_name = get_ssm_parameter("/opsagent/agentcore/provider-name")
-ops_agent_arn = (
-    f"arn:aws:bedrock-agentcore:{region}:{account_id}:runtime/{ops_agent_id}"
-)
+# websearch_provider_name = get_ssm_parameter("/websearchagent/agentcore/provider-name")
+# websearch_agent_arn = (
+#     f"arn:aws:bedrock-agentcore:{region}:{account_id}:runtime/{websearch_agent_id}"
+# )
+
 
 def create_message(*, role: Role = Role.user, text: str) -> Message:
     """Create a message for A2A protocol."""
@@ -90,7 +91,9 @@ def fetch_agent_card(provider_name: str, agent_arn: str):
     return _fetch_with_auth()
 
 
-async def send_message(message: str, session_id: str, provider_name: str, agent_arn: str):
+async def send_message(
+    message: str, session_id: str, provider_name: str, agent_arn: str
+):
     """Send a message to the agent using A2A protocol."""
 
     @requires_access_token(
@@ -167,9 +170,9 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Connect to a Bedrock agent")
     parser.add_argument(
         "--agent",
-        choices=["monitor", "ops"],
+        choices=["monitor", "websearch"],
         required=True,
-        help="Agent to connect to: 'monitor' or 'ops'"
+        help="Agent to connect to: 'monitor' or 'websearch'",
     )
     args = parser.parse_args()
 
@@ -178,10 +181,10 @@ if __name__ == "__main__":
         selected_provider_name = moniter_provider_name
         selected_agent_arn = moniter_agent_arn
         print(f"\n🔍 Using Monitor Agent (ID: {moniter_agent_id})")
-    else:  # ops
-        selected_provider_name = ops_provider_name
-        selected_agent_arn = ops_agent_arn
-        print(f"\n⚙️  Using Ops Agent (ID: {ops_agent_id})")
+    else:  # websearch
+        selected_provider_name = websearch_provider_name
+        selected_agent_arn = websearch_agent_arn
+        print(f"\n🔍 Using WebSearch Agent (ID: {websearch_agent_id})")
 
     # First, fetch and display the agent card
     print("\n📋 Fetching agent card...\n")
@@ -207,5 +210,9 @@ if __name__ == "__main__":
             continue
 
         # Send message using async A2A protocol
-        asyncio.run(send_message(user_input, session_id, selected_provider_name, selected_agent_arn))
+        asyncio.run(
+            send_message(
+                user_input, session_id, selected_provider_name, selected_agent_arn
+            )
+        )
         print()

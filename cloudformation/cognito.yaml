@@ -1,5 +1,5 @@
 AWSTemplateFormatVersion: '2010-09-09'
-Description: 'Cognito User Pool with OAuth 2.0 client credentials flow for machine-to-machine (M2M) authentication. Creates two client applications (OpsOrchestrator, Monitoring) with scoped access and stores credentials in Secrets Manager with KMS encryption.'
+Description: 'Cognito User Pool with OAuth 2.0 client credentials flow for machine-to-machine (M2M) authentication. Creates two client applications (WebSearch, Monitoring) with scoped access and stores credentials in Secrets Manager with KMS encryption.'
 
 Parameters:
   DomainName:
@@ -52,19 +52,19 @@ Resources:
           ScopeDescription: 'Read access to resources'
         - ScopeName: 'write'
           ScopeDescription: 'Write access to resources'
-        - ScopeName: 'ops-orchestrator'
-          ScopeDescription: 'Ops Orchestrator specific access'
+        - ScopeName: 'websearch'
+          ScopeDescription: 'WebSearch agent specific access'
         - ScopeName: 'monitoring'
           ScopeDescription: 'Monitoring specific access'
         - ScopeName: 'gateway'
           ScopeDescription: 'Gateway specific access'
 
-  # Ops Orchestrator Client for M2M Authentication
-  OpsOrchestratorClient:
+  # WebSearch Client for M2M Authentication
+  WebSearchClient:
     Type: AWS::Cognito::UserPoolClient
     DependsOn: M2MResourceServer
     Properties:
-      ClientName: 'ops-orchestrator-client'
+      ClientName: 'websearch-client'
       UserPoolId: !Ref M2MUserPool
       GenerateSecret: true
       ExplicitAuthFlows: []
@@ -76,7 +76,7 @@ Resources:
       AllowedOAuthScopes:
         - !Sub '${AWS::StackName}-resource-server/read'
         - !Sub '${AWS::StackName}-resource-server/write'
-        - !Sub '${AWS::StackName}-resource-server/ops-orchestrator'
+        - !Sub '${AWS::StackName}-resource-server/websearch'
       AccessTokenValidity: 1
       IdTokenValidity: 1
       RefreshTokenValidity: 1
@@ -139,21 +139,21 @@ Resources:
       PreventUserExistenceErrors: 'ENABLED'
 
   # Secrets Manager Secrets for Client Configuration
-  OpsOrchestratorClientSecret:
+  WebSearchClientSecret:
     Type: AWS::SecretsManager::Secret
     Properties:
-      Name: !Sub '${AWS::StackName}/ops-orchestrator/client-config'
-      Description: 'Ops Orchestrator Client configuration for M2M authentication'
+      Name: !Sub '${AWS::StackName}/websearch/client-config'
+      Description: 'WebSearch Client configuration for M2M authentication'
       SecretString: !Sub |
         {
-          "client_id": "${OpsOrchestratorClient}",
+          "client_id": "${WebSearchClient}",
           "user_pool_id": "${M2MUserPool}",
           "token_endpoint": "https://${M2MUserPoolDomain}.auth.${AWS::Region}.amazoncognito.com/oauth2/token",
           "cognito_discovery_url": "https://cognito-idp.${AWS::Region}.amazonaws.com/${M2MUserPool}/.well-known/openid-configuration"
         }
       Tags:
         - Key: Name
-          Value: !Sub '${AWS::StackName}-OpsOrchestrator-ClientSecret'
+          Value: !Sub '${AWS::StackName}-WebSearch-ClientSecret'
 
   MonitoringClientSecret:
     Type: AWS::SecretsManager::Secret
@@ -214,7 +214,7 @@ Resources:
                   - secretsmanager:UpdateSecret
                   - secretsmanager:GetSecretValue
                 Resource:
-                  - !Ref OpsOrchestratorClientSecret
+                  - !Ref WebSearchClientSecret
                   - !Ref MonitoringClientSecret
                   - !Ref GatewayClientSecret
 
@@ -311,16 +311,16 @@ Resources:
               response = http.request('PUT', event['ResponseURL'], body=json_response_body, headers=headers)
               print(f"Response status: {response.status}")
 
-  # Custom resource to update Ops Orchestrator client secret
-  OpsOrchestratorClientSecretUpdater:
+  # Custom resource to update WebSearch client secret
+  WebSearchClientSecretUpdater:
     Type: AWS::CloudFormation::CustomResource
-    DependsOn: OpsOrchestratorClientSecret
+    DependsOn: WebSearchClientSecret
     Properties:
       ServiceToken: !GetAtt ClientSecretLambda.Arn
       UserPoolId: !Ref M2MUserPool
-      ClientId: !Ref OpsOrchestratorClient
-      SecretArn: !Ref OpsOrchestratorClientSecret
-      ClientType: OpsOrchestrator
+      ClientId: !Ref WebSearchClient
+      SecretArn: !Ref WebSearchClientSecret
+      ClientType: WebSearch
 
   # Custom resource to update Monitoring client secret
   MonitoringClientSecretUpdater:
@@ -351,11 +351,11 @@ Outputs:
     Export:
       Name: !Sub '${AWS::StackName}-DiscoveryUrl'
 
-  OpsOrchestratorClientId:
-    Description: 'Ops Orchestrator Client ID'
-    Value: !Ref OpsOrchestratorClient
+  WebSearchClientId:
+    Description: 'WebSearch Client ID'
+    Value: !Ref WebSearchClient
     Export:
-      Name: !Sub '${AWS::StackName}-OpsOrchestratorClientId'
+      Name: !Sub '${AWS::StackName}-WebSearchClientId'
 
   MonitoringClientId:
     Description: 'Monitoring Client ID'
@@ -363,11 +363,11 @@ Outputs:
     Export:
       Name: !Sub '${AWS::StackName}-MonitoringClientId'
 
-  OpsOrchestratorClientSecretArn:
-    Description: 'Ops Orchestrator Client Secret ARN'
-    Value: !Ref OpsOrchestratorClientSecret
+  WebSearchClientSecretArn:
+    Description: 'WebSearch Client Secret ARN'
+    Value: !Ref WebSearchClientSecret
     Export:
-      Name: !Sub '${AWS::StackName}-OpsOrchestratorClientSecretArn'
+      Name: !Sub '${AWS::StackName}-WebSearchClientSecretArn'
 
   MonitoringClientSecretArn:
     Description: 'Monitoring Client Secret ARN'
