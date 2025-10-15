@@ -17,7 +17,7 @@ from a2a.types import (
     TextPart,
     UnsupportedOperationError,
 )
-from a2a.utils import new_agent_text_message
+from a2a.utils import new_agent_text_message, new_task
 from a2a.utils.errors import ServerError
 
 from agent import _call_agent, create_agent
@@ -67,10 +67,12 @@ class WebSearchAgentExecutor(AgentExecutor):
             logger.error("Session ID is not set")
             raise ServerError(error=InvalidParamsError())
 
+        # Get or create task
         task = context.current_task
         if not task:
-            logger.error("No current task in context")
-            raise ServerError(error=InvalidParamsError())
+            logger.info("No current task, creating new task")
+            task = new_task(context.message)  # type: ignore
+            await event_queue.enqueue_event(task)
 
         updater = TaskUpdater(event_queue, task.id, task.context_id)
         task_id = context.task_id
