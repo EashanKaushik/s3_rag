@@ -32,9 +32,38 @@ def create_agent(session_id: str, actor_id: str):
     )
 
 
+async def _call_agent_stream(agent, prompt: str):
+    """
+    Call agent using OpenAI Agents SDK Runner with streaming.
+    Yields streaming events and final result.
+    """
+    try:
+        logger.info(f"📝 Calling agent with prompt: {prompt[:100]}...")
+        logger.info(f"🤖 Agent type: {type(agent)}")
+        logger.info(
+            f"🤖 Agent name: {agent.name if hasattr(agent, 'name') else 'unknown'}"
+        )
+
+        # Use the proper OpenAI Agents SDK Runner with streaming
+        runner = Runner()
+        logger.info("🏃 Created Runner instance for streaming")
+
+        async for event in runner.run_stream(agent, prompt):
+            # Yield each streaming event
+            yield {"event": event}
+
+        # After streaming completes, yield the final result
+        logger.info("✅ Agent streaming completed")
+
+    except Exception as e:
+        logger.error(f"❌ Error running agent: {str(e)}", exc_info=True)
+        yield {"error": str(e)}
+
+
 async def _call_agent(agent, prompt: str):
     """
-    Call agent using the proper OpenAI Agents SDK Runner with detailed logging.
+    Call agent using the proper OpenAI Agents SDK Runner (non-streaming).
+    For backward compatibility.
     """
     try:
         logger.info(f"📝 Calling agent with prompt: {prompt[:100]}...")

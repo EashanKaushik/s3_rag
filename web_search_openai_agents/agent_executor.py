@@ -1,6 +1,4 @@
-import datetime
 import logging
-import uuid
 
 from a2a.server.agent_execution import AgentExecutor, RequestContext
 from a2a.server.events import EventQueue
@@ -8,19 +6,14 @@ from a2a.server.tasks import TaskUpdater
 from a2a.types import (
     InternalError,
     InvalidParamsError,
-    Message,
     Part,
-    Role,
     TaskState,
-    TaskStatus,
-    TaskStatusUpdateEvent,
     TextPart,
-    UnsupportedOperationError,
 )
 from a2a.utils import new_agent_text_message, new_task
 from a2a.utils.errors import ServerError
 
-from agent import _call_agent, create_agent
+from agent import _call_agent_stream, create_agent
 
 logger = logging.getLogger(__name__)
 
@@ -44,6 +37,70 @@ class WebSearchAgentExecutor(AgentExecutor):
             self._agent = create_agent(session_id=session_id, actor_id=actor_id)
             logger.info("Web search agent created successfully")
         return self._agent
+
+    async def _execute_streaming(
+        self, agent, user_message: str, updater: TaskUpdater, task_id: str
+    ) -> None:
+        """Execute agent with streaming and update task status incrementally."""
+        accumulated_text = ""
+        final_output = ""
+
+        try:
+            async for stream_event in _call_agent_stream(agent, user_message):
+                # Check if task was cancelled
+                if not self._active_tasks.get(task_id, False):
+                    logger.info(f"Task {task_id} was cancelled during streaming")
+                    return
+
+                # Handle error events
+                if "error" in stream_event:
+                    error_msg = stream_event["error"]
+                    logger.error(f"Error in stream: {error_msg}")
+                    raise Exception(error_msg)
+
+                # Handle streaming events
+                if "event" in stream_event:
+                    event = stream_event["event"]
+                    logger.debug(f"Stream event type: {type(event).__name__}")
+
+                    # Handle text deltas from the agent
+                    if hasattr(event, "delta") and hasattr(event.delta, "text"):
+                        text_chunk = event.delta.text
+                        if text_chunk:
+                            accumulated_text += text_chunk
+                            # Send incremental update
+                            await updater.update_status(
+                                TaskState.working,
+                                new_agent_text_message(
+                                    accumulated_text, updater.context_id, updater.task_id
+                                ),
+                            )
+
+                    # Handle final result
+                    elif hasattr(event, "final_output"):
+                        final_output = event.final_output
+                        logger.info(f"Got final output: {final_output[:200]}...")
+
+                    # Handle run completion
+                    elif hasattr(event, "output"):
+                        final_output = event.output
+                        logger.info(f"Got output: {final_output[:200]}...")
+
+            # Use final_output if available, otherwise use accumulated_text
+            output_text = final_output or accumulated_text
+
+            # Add final result as artifact
+            if output_text:
+                await updater.add_artifact(
+                    [Part(root=TextPart(text=output_text))],
+                    name="search_result",
+                )
+
+            await updater.complete()
+
+        except Exception as e:
+            logger.error(f"Error in streaming execution: {e}", exc_info=True)
+            raise
 
     async def execute(
         self,
@@ -94,30 +151,9 @@ class WebSearchAgentExecutor(AgentExecutor):
             # Mark task as active
             self._active_tasks[task_id] = True
 
-            # Update task to working state
-            await updater.update_status(
-                TaskState.working,
-                new_agent_text_message(
-                    "Processing your request...", task.context_id, task.id
-                ),
-            )
-
-            # Call the agent
-            logger.info("Calling agent with user message...")
-            result = await _call_agent(agent, user_message)
-
-            # Check if task was cancelled
-            if not self._active_tasks.get(task_id, False):
-                logger.info(f"Task {task_id} was cancelled")
-                return
-
-            # Add result as artifact and complete
-            output_text = result.get("output", "")
-            await updater.add_artifact(
-                [Part(root=TextPart(text=output_text))],
-                name="search_result",
-            )
-            await updater.complete()
+            # Stream the agent response
+            logger.info("Calling agent with streaming...")
+            await self._execute_streaming(agent, user_message, updater, task_id)
 
             logger.info(f"Task {task_id} completed successfully")
 

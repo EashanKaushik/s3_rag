@@ -19,7 +19,7 @@ agent_card = AgentCard(
     version="1.0.0",
     defaultInputModes=["text/plain"],
     defaultOutputModes=["text/plain"],
-    capabilities=AgentCapabilities(streaming=False, pushNotifications=False),
+    capabilities=AgentCapabilities(streaming=True, pushNotifications=False),
     skills=[
         AgentSkill(
             id="websearch",

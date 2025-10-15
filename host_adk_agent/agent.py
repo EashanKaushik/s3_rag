@@ -8,7 +8,6 @@ from bedrock_agentcore.identity.auth import requires_access_token
 
 from google.adk.agents.llm_agent import Agent
 from google.adk.agents.remote_a2a_agent import RemoteA2aAgent
-from google.genai import types
 
 from host_adk_agent.utils import get_ssm_parameter, get_aws_info
 
