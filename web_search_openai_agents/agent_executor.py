@@ -61,30 +61,54 @@ class WebSearchAgentExecutor(AgentExecutor):
                 # Handle streaming events
                 if "event" in stream_event:
                     event = stream_event["event"]
-                    logger.debug(f"Stream event type: {type(event).__name__}")
+                    event_type = getattr(event, "type", None)
+                    logger.info(f"Stream event type: {event_type}")
 
-                    # Handle text deltas from the agent
-                    if hasattr(event, "delta") and hasattr(event.delta, "text"):
-                        text_chunk = event.delta.text
-                        if text_chunk:
-                            accumulated_text += text_chunk
-                            # Send incremental update
-                            await updater.update_status(
-                                TaskState.working,
-                                new_agent_text_message(
-                                    accumulated_text, updater.context_id, updater.task_id
-                                ),
-                            )
+                    # Handle raw_response_event - token by token streaming
+                    if event_type == "raw_response_event":
+                        # Check if this is a text delta event
+                        if hasattr(event, "data") and hasattr(event.data, "delta"):
+                            text_chunk = event.data.delta
+                            if text_chunk:
+                                accumulated_text += text_chunk
+                                logger.debug(f"Text delta: {text_chunk}")
+                                # Send incremental update
+                                await updater.update_status(
+                                    TaskState.working,
+                                    new_agent_text_message(
+                                        accumulated_text,
+                                        updater.context_id,
+                                        updater.task_id,
+                                    ),
+                                )
 
-                    # Handle final result
-                    elif hasattr(event, "final_output"):
-                        final_output = event.final_output
-                        logger.info(f"Got final output: {final_output[:200]}...")
+                    # Handle run_item_stream_event - completed items
+                    elif event_type == "run_item_stream_event":
+                        if hasattr(event, "item"):
+                            item = event.item
+                            item_type = getattr(item, "type", None)
+                            logger.info(f"Run item type: {item_type}")
 
-                    # Handle run completion
-                    elif hasattr(event, "output"):
-                        final_output = event.output
-                        logger.info(f"Got output: {final_output[:200]}...")
+                            # Handle message output items
+                            if item_type == "message_output_item":
+                                if hasattr(item, "output"):
+                                    output = item.output
+                                    if hasattr(output, "content"):
+                                        for content_item in output.content:
+                                            if hasattr(content_item, "text"):
+                                                text = content_item.text
+                                                final_output += text
+                                                logger.info(f"Got message output: {text[:200]}...")
+
+                            # Handle tool call output items
+                            elif item_type == "tool_call_output_item":
+                                if hasattr(item, "output"):
+                                    logger.info(f"Tool output: {item.output}")
+
+                    # Handle agent_updated_stream_event
+                    elif event_type == "agent_updated_stream_event":
+                        if hasattr(event, "new_agent"):
+                            logger.info(f"Agent updated: {event.new_agent.name}")
 
             # Use final_output if available, otherwise use accumulated_text
             output_text = final_output or accumulated_text
@@ -120,9 +144,9 @@ class WebSearchAgentExecutor(AgentExecutor):
             session_id = headers.get("x-amzn-bedrock-agentcore-runtime-session-id")
             actor_id = headers.get("x-amzn-bedrock-agentcore-runtime-user-id", actor_id)
 
-        if not session_id:
-            logger.error("Session ID is not set")
-            raise ServerError(error=InvalidParamsError())
+        # if not session_id:
+        #     logger.error("Session ID is not set")
+        #     raise ServerError(error=InvalidParamsError())
 
         # Get or create task
         task = context.current_task

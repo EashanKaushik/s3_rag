@@ -1,8 +1,14 @@
 import os
 import logging
+from pathlib import Path
+from dotenv import load_dotenv
 from agents import Agent, Runner
 from prompt import SYSTEM_PROMPT
 from tools import _get_memory_tools, web_search_impl
+
+# Load environment variables from .env file
+env_path = Path(__file__).parent / ".env"
+load_dotenv(dotenv_path=env_path)
 
 logger = logging.getLogger(__name__)
 

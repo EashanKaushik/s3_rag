@@ -1,9 +1,15 @@
 from agents import function_tool
 import os
 import logging
+from pathlib import Path
+from dotenv import load_dotenv
 from tavily import TavilyClient
 from bedrock_agentcore.memory import MemoryClient
 from memory_tool import create_memory_tools
+
+# Load environment variables from .env file
+env_path = Path(__file__).parent / ".env"
+load_dotenv(dotenv_path=env_path)
 
 logger = logging.getLogger(__name__)
 

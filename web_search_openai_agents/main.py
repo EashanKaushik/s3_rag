@@ -1,3 +1,5 @@
+from pathlib import Path
+from dotenv import load_dotenv
 from a2a.server.apps import A2AStarletteApplication
 from a2a.server.request_handlers import DefaultRequestHandler
 from a2a.server.tasks import InMemoryTaskStore
@@ -7,6 +9,10 @@ from starlette.responses import JSONResponse
 import logging
 import os
 import uvicorn
+
+# Load environment variables from .env file
+env_path = Path(__file__).parent / ".env"
+load_dotenv(dotenv_path=env_path)
 
 logger = logging.getLogger(__name__)
 
