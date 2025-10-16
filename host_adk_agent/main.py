@@ -19,12 +19,14 @@ async def call_agent(payload: dict, context):
     if not root_agent:
         # Import agent creation inside entrypoint so workload identity is available
         from agent import getroot_agent
-        from bedrock_agentcore.identity.context import BedrockAgentCoreContext
+        from bedrock_agentcore.runtime.context import BedrockAgentCoreContext
 
         # Debug: Check if workload token is set
         try:
             token = BedrockAgentCoreContext.get_workload_access_token()
-            app.logger.info(f"Workload token is set: {token[:20] if token else 'None'}...")
+            app.logger.info(
+                f"Workload token is set: {token[:20] if token else 'None'}..."
+            )
         except Exception as e:
             app.logger.error(f"Workload token not available: {e}")
 
