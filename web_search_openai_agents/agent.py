@@ -45,10 +45,11 @@ async def _call_agent_stream(agent, prompt: str):
         )
 
         # Use the proper OpenAI Agents SDK Runner with streaming
-        runner = Runner()
-        logger.info("🏃 Created Runner instance for streaming")
+        logger.info("🏃 Starting streaming run")
 
-        async for event in runner.run_stream(agent, prompt):
+        result = Runner.run_streamed(agent, input=prompt)
+
+        async for event in result.stream_events():
             # Yield each streaming event
             yield {"event": event}
 
