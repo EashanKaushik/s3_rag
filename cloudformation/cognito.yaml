@@ -58,6 +58,8 @@ Resources:
           ScopeDescription: 'Monitoring specific access'
         - ScopeName: 'gateway'
           ScopeDescription: 'Gateway specific access'
+        - ScopeName: 'hostagent'
+          ScopeDescription: 'Host Agent specific access'
 
   # WebSearch Client for M2M Authentication
   WebSearchClient:
@@ -138,6 +140,33 @@ Resources:
         RefreshToken: days
       PreventUserExistenceErrors: 'ENABLED'
 
+  # Host Agent Client for M2M Authentication
+  HostAgentClient:
+    Type: AWS::Cognito::UserPoolClient
+    DependsOn: M2MResourceServer
+    Properties:
+      ClientName: 'hostagent-client'
+      UserPoolId: !Ref M2MUserPool
+      GenerateSecret: true
+      ExplicitAuthFlows: []
+      SupportedIdentityProviders:
+        - COGNITO
+      AllowedOAuthFlows:
+        - client_credentials
+      AllowedOAuthFlowsUserPoolClient: true
+      AllowedOAuthScopes:
+        - !Sub '${AWS::StackName}-resource-server/read'
+        - !Sub '${AWS::StackName}-resource-server/write'
+        - !Sub '${AWS::StackName}-resource-server/hostagent'
+      AccessTokenValidity: 1
+      IdTokenValidity: 1
+      RefreshTokenValidity: 1
+      TokenValidityUnits:
+        AccessToken: hours
+        IdToken: hours
+        RefreshToken: days
+      PreventUserExistenceErrors: 'ENABLED'
+
   # Secrets Manager Secrets for Client Configuration
   WebSearchClientSecret:
     Type: AWS::SecretsManager::Secret
@@ -187,6 +216,22 @@ Resources:
         - Key: Name
           Value: !Sub '${AWS::StackName}-Gateway-ClientSecret'
 
+  HostAgentClientSecret:
+    Type: AWS::SecretsManager::Secret
+    Properties:
+      Name: !Sub '${AWS::StackName}/hostagent/client-config'
+      Description: 'Host Agent Client configuration for M2M authentication'
+      SecretString: !Sub |
+        {
+          "client_id": "${HostAgentClient}",
+          "user_pool_id": "${M2MUserPool}",
+          "token_endpoint": "https://${M2MUserPoolDomain}.auth.${AWS::Region}.amazoncognito.com/oauth2/token",
+          "cognito_discovery_url": "https://cognito-idp.${AWS::Region}.amazonaws.com/${M2MUserPool}/.well-known/openid-configuration"
+        }
+      Tags:
+        - Key: Name
+          Value: !Sub '${AWS::StackName}-HostAgent-ClientSecret'
+
   # IAM Role for Lambda function
   ClientSecretLambdaRole:
     Type: AWS::IAM::Role
@@ -217,6 +262,7 @@ Resources:
                   - !Ref WebSearchClientSecret
                   - !Ref MonitoringClientSecret
                   - !Ref GatewayClientSecret
+                  - !Ref HostAgentClientSecret
 
   # Lambda function to retrieve client secrets
   ClientSecretLambda:
@@ -344,6 +390,17 @@ Resources:
       SecretArn: !Ref GatewayClientSecret
       ClientType: Gateway
 
+  # Custom resource to update Host Agent client secret
+  HostAgentClientSecretUpdater:
+    Type: AWS::CloudFormation::CustomResource
+    DependsOn: HostAgentClientSecret
+    Properties:
+      ServiceToken: !GetAtt ClientSecretLambda.Arn
+      UserPoolId: !Ref M2MUserPool
+      ClientId: !Ref HostAgentClient
+      SecretArn: !Ref HostAgentClientSecret
+      ClientType: HostAgent
+
 Outputs:
   DiscoveryUrl:
     Description: 'OAuth2 Discovery URL for authentication'
@@ -386,3 +443,15 @@ Outputs:
     Value: !Ref GatewayClientSecret
     Export:
       Name: !Sub '${AWS::StackName}-GatewayClientSecretArn'
+
+  HostAgentClientId:
+    Description: 'Host Agent Client ID'
+    Value: !Ref HostAgentClient
+    Export:
+      Name: !Sub '${AWS::StackName}-HostAgentClientId'
+
+  HostAgentClientSecretArn:
+    Description: 'Host Agent Client Secret ARN'
+    Value: !Ref HostAgentClientSecret
+    Export:
+      Name: !Sub '${AWS::StackName}-HostAgentClientSecretArn'

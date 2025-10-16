@@ -9,10 +9,14 @@ Parameters:
   GitHubURL:
     Type: String
     Description: Github URL of the project
-  
+
   AgentDirectory:
     Type: String
     Description: Agent directory with Dockerfile of agent
+
+  CognitoStackName:
+    Type: String
+    Description: Name of the Cognito CloudFormation stack to import values from
 
 Resources:
   AgentCoreRuntimeExecutionRole:
@@ -470,6 +474,15 @@ Resources:
                   - codebuild:StartBuild
                   - codebuild:BatchGetBuilds
                 Resource: !GetAtt AgentDockerBuildProject.Arn
+        - PolicyName: SecretsManagerAccessPolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - secretsmanager:GetSecretValue
+                Resource:
+                  Fn::ImportValue: !Sub '${CognitoStackName}-HostAgentClientSecretArn'
         - PolicyName: BedrockIdentityAccessPolicy
           PolicyDocument:
             Version: '2012-10-17'
@@ -537,6 +550,10 @@ Resources:
       Environment:
         Variables:
           CODEBUILD_PROJECT_NAME: !Ref AgentDockerBuildProject
+          AGENT_CLIENT_SECRET_ARN:
+            Fn::ImportValue: !Sub '${CognitoStackName}-HostAgentClientSecretArn'
+          DISCOVERY_URL:
+            Fn::ImportValue: !Sub '${CognitoStackName}-DiscoveryUrl'
           ECR_REPOSITORY_NAME: !Ref AgentECRRepository
       Code:
         ZipFile: |
@@ -550,43 +567,43 @@ Resources:
           logger = logging.getLogger()
           logger.setLevel(logging.INFO)
 
-          # def create_oauth2_credential_provider(secret_arn, discovery_url, provider_name):
-          #     try:
-          #         logger.info(f"Creating OAuth2 credential provider for Agent: {provider_name}")
+          def create_oauth2_credential_provider(secret_arn, discovery_url, provider_name):
+              try:
+                  logger.info(f"Creating OAuth2 credential provider for Agent: {provider_name}")
 
-          #         # Get client credentials from Secrets Manager
-          #         secrets_client = boto3.client('secretsmanager')
-          #         secret_response = secrets_client.get_secret_value(SecretId=secret_arn)
-          #         secret_data = json.loads(secret_response['SecretString'])
+                  # Get client credentials from Secrets Manager
+                  secrets_client = boto3.client('secretsmanager')
+                  secret_response = secrets_client.get_secret_value(SecretId=secret_arn)
+                  secret_data = json.loads(secret_response['SecretString'])
 
-          #         client_id = secret_data['client_id']
-          #         client_secret = secret_data['client_secret']
-          #         token_url = secret_data['token_endpoint']
-          #         auth_url = discovery_url.replace('/.well-known/openid-configuration', '/oauth2/authorize')
+                  client_id = secret_data['client_id']
+                  client_secret = secret_data['client_secret']
+                  token_url = secret_data['token_endpoint']
+                  auth_url = discovery_url.replace('/.well-known/openid-configuration', '/oauth2/authorize')
 
-          #         # Create OAuth2 credential provider
-          #         identity_client = boto3.client("bedrock-agentcore-control",)
+                  # Create OAuth2 credential provider
+                  identity_client = boto3.client("bedrock-agentcore-control",)
 
-          #         identity_client.create_oauth2_credential_provider(
-          #             name=provider_name,
-          #             credentialProviderVendor="CustomOauth2",
-          #             oauth2ProviderConfigInput={
-          #                 "customOauth2ProviderConfig": {
-          #                     "clientId": client_id,
-          #                     "clientSecret": client_secret,
-          #                     "oauthDiscovery": {
-          #                       "discoveryUrl": discovery_url
-          #                     },
-          #                 }
-          #             },
-          #         )
+                  identity_client.create_oauth2_credential_provider(
+                      name=provider_name,
+                      credentialProviderVendor="CustomOauth2",
+                      oauth2ProviderConfigInput={
+                          "customOauth2ProviderConfig": {
+                              "clientId": client_id,
+                              "clientSecret": client_secret,
+                              "oauthDiscovery": {
+                                "discoveryUrl": discovery_url
+                              },
+                          }
+                      },
+                  )
 
-          #         logger.info(f"OAuth2 credential provider created: {provider_name}")
-          #         return provider_name
+                  logger.info(f"OAuth2 credential provider created: {provider_name}")
+                  return provider_name
 
-          #     except Exception as e:
-          #         logger.error(f"Failed to create OAuth2 credential provider: {str(e)}")
-          #         raise e
+              except Exception as e:
+                  logger.error(f"Failed to create OAuth2 credential provider: {str(e)}")
+                  raise e
 
           def empty_ecr_repository(repository_name):
               try:
@@ -620,14 +637,14 @@ Resources:
 
                   request_type = event['RequestType']
                   project_name = os.environ['CODEBUILD_PROJECT_NAME']
-                  # agent_client_secret_arn = os.environ['AGENT_CLIENT_SECRET_ARN']
-                  # discovery_url = os.environ['DISCOVERY_URL']
-                  # provider_name = event['ResourceProperties']['ProviderName']
+                  agent_client_secret_arn = os.environ['AGENT_CLIENT_SECRET_ARN']
+                  discovery_url = os.environ['DISCOVERY_URL']
+                  provider_name = event['ResourceProperties']['ProviderName']
                   ecr_repository_name = os.environ['ECR_REPOSITORY_NAME']
 
                   if request_type == 'Create':
                       # Create OAuth2 credential provider first
-                      # create_oauth2_credential_provider(agent_client_secret_arn, discovery_url, provider_name)
+                      create_oauth2_credential_provider(agent_client_secret_arn, discovery_url, provider_name)
                       # Start CodeBuild project on stack creation and wait for completion
                       codebuild = boto3.client('codebuild')
 
@@ -682,13 +699,13 @@ Resources:
                       empty_ecr_repository(ecr_repository_name)
 
                       # Clean up OAuth2 credential provider
-                      # try:
-                      #     identity_client = boto3.client("bedrock-agentcore-control",)
-                      #     identity_client.delete_oauth2_credential_provider(name=provider_name)
-                      #     logger.info(f"OAuth2 credential provider deleted: {provider_name}")
-                      # except Exception as e:
-                      #     logger.error(f"Failed to delete OAuth2 credential provider: {str(e)}")
-                      #     # Continue with deletion even if provider cleanup fails
+                      try:
+                          identity_client = boto3.client("bedrock-agentcore-control",)
+                          identity_client.delete_oauth2_credential_provider(name=provider_name)
+                          logger.info(f"OAuth2 credential provider deleted: {provider_name}")
+                      except Exception as e:
+                          logger.error(f"Failed to delete OAuth2 credential provider: {str(e)}")
+                          # Continue with deletion even if provider cleanup fails
 
                       send_response(event, context, 'SUCCESS', {})
 
@@ -728,7 +745,7 @@ Resources:
     DependsOn: AgentDockerBuildProject
     Properties:
       ServiceToken: !GetAtt CodeBuildTriggerFunction.Arn
-      # ProviderName: !Sub 'AgentOAuth2Provider-${AWS::StackName}'
+      ProviderName: !Sub 'HostAgentOAuth2Provider-${AWS::StackName}'
 
   # BedrockAgentCore Runtime using build-1 ECR image (first build from CodeBuildTrigger)
   AgentRuntime:
@@ -743,6 +760,12 @@ Resources:
         ContainerConfiguration:
           ContainerUri: !Sub '${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/${AgentECRRepository}:build-1'
       ProtocolConfiguration: HTTP
+      AuthorizerConfiguration:
+        CustomJWTAuthorizer:
+          DiscoveryUrl:
+            Fn::ImportValue: !Sub '${CognitoStackName}-DiscoveryUrl'
+          AllowedClients:
+            - Fn::ImportValue: !Sub '${CognitoStackName}-HostAgentClientId'
       EnvironmentVariables:
         GOOGLE_API_KEY: !Ref GoogleApiKey
         MCP_REGION: !Sub '${AWS::Region}'
@@ -759,6 +782,17 @@ Resources:
       Value: !GetAtt AgentRuntime.AgentRuntimeId
       Tags:
         Name: !Sub '${AWS::StackName}-AgentRuntimeId-Parameter'
+
+  # SSM Parameter for OAuth2 Provider Name
+  AgentProviderNameParameter:
+    Type: AWS::SSM::Parameter
+    Properties:
+      Name: '/hostagent/agentcore/provider-name'
+      Description: 'OAuth2 Credential Provider Name'
+      Type: String
+      Value: !Sub 'HostAgentOAuth2Provider-${AWS::StackName}'
+      Tags:
+        Name: !Sub '${AWS::StackName}-ProviderName-Parameter'
 
 Outputs:
   AgentRuntimeArn:
@@ -778,3 +812,9 @@ Outputs:
     Value: !Ref AgentRuntime
     Export:
       Name: !Sub '${AWS::StackName}-AgentRuntimeName'
+
+  AgentProviderName:
+    Description: 'Name of the Agent provider'
+    Value: !Sub 'HostAgentOAuth2Provider-${AWS::StackName}'
+    Export:
+      Name: !Sub '${AWS::StackName}-AgentProviderName'

@@ -2,6 +2,8 @@ import argparse
 import asyncio
 import json
 import logging
+import urllib.parse
+from typing import Any, Optional
 from uuid import uuid4
 from urllib.parse import quote
 
@@ -23,6 +25,7 @@ account_id, region = get_aws_info()
 
 moniter_agent_id = get_ssm_parameter("/monitoragent/agentcore/runtime-id")
 websearch_agent_id = get_ssm_parameter("/websearchagent/agentcore/runtime-id")
+hostagent_agent_id = get_ssm_parameter("/hostagent/agentcore/runtime-id")
 
 moniter_provider_name = get_ssm_parameter("/monitoragent/agentcore/provider-name")
 moniter_agent_arn = (
@@ -32,6 +35,11 @@ moniter_agent_arn = (
 websearch_provider_name = get_ssm_parameter("/websearchagent/agentcore/provider-name")
 websearch_agent_arn = (
     f"arn:aws:bedrock-agentcore:{region}:{account_id}:runtime/{websearch_agent_id}"
+)
+
+hostagent_provider_name = get_ssm_parameter("/hostagent/agentcore/provider-name")
+hostagent_agent_arn = (
+    f"arn:aws:bedrock-agentcore:{region}:{account_id}:runtime/{hostagent_agent_id}"
 )
 
 
@@ -165,14 +173,110 @@ async def send_message(
     return await _send_with_auth()
 
 
+def invoke_endpoint(
+    agent_arn: str,
+    payload,
+    session_id: str,
+    bearer_token: Optional[str],
+    endpoint_name: str = "DEFAULT",
+    stream: bool = True,
+) -> Any:
+    """Invoke the host agent endpoint directly."""
+    escaped_arn = urllib.parse.quote(agent_arn, safe="")
+
+    _, region = get_aws_info()
+
+    url = f"https://bedrock-agentcore.{region}.amazonaws.com/runtimes/{escaped_arn}/invocations"
+
+    headers = {
+        "Authorization": f"Bearer {bearer_token}",
+        "Content-Type": "application/json",
+        "X-Amzn-Bedrock-AgentCore-Runtime-Session-Id": session_id,
+    }
+
+    try:
+        body = json.loads(payload) if isinstance(payload, str) else payload
+    except json.JSONDecodeError:
+        body = {"payload": payload}
+
+    response = requests.post(
+        url,
+        params={"qualifier": endpoint_name},
+        headers=headers,
+        json=body,
+        timeout=100,
+        stream=stream,
+    )
+
+    if not stream:
+        print(
+            response.content.decode("utf-8").replace("\\n", "\n").replace('"', ""),
+            flush=True,
+        )
+    else:
+        last_data = False
+
+        for line in response.iter_lines(chunk_size=1):
+            if line:
+                line = line.decode("utf-8")
+                if line.startswith("data: "):
+                    data_content = line[6:]  # Remove "data: " prefix
+
+                    try:
+                        # Try to parse as JSON
+                        parsed = json.loads(data_content)
+
+                        # Check for complex event structure with contentBlockDelta
+                        if isinstance(parsed, dict) and "event" in parsed:
+                            event = parsed["event"]
+                            if isinstance(event, dict) and "contentBlockDelta" in event:
+                                delta = event["contentBlockDelta"].get("delta", {})
+                                if "text" in delta:
+                                    text = delta["text"]
+                                    text = text.replace("\\n", "\n")
+                                    print(text, end="", flush=True)
+                        # If parsed is just a string, print it directly
+                        elif isinstance(parsed, str):
+                            text = parsed.replace("\\n", "\n")
+                            print(text, end="", flush=True)
+                    except json.JSONDecodeError:
+                        # If not JSON, just print the raw data
+                        print(data_content, end="", flush=True)
+
+
+def send_message_to_host(
+    message: str, session_id: str, provider_name: str, agent_arn: str
+):
+    """Send a message to the host agent using direct endpoint invocation."""
+
+    @requires_access_token(
+        provider_name=provider_name,
+        scopes=[],
+        auth_flow="M2M",
+        into="bearer_token",
+        force_authentication=True,
+    )
+    def _send_with_auth(bearer_token: str = str()):
+        payload = {"prompt": message}
+        invoke_endpoint(
+            agent_arn=agent_arn,
+            payload=payload,
+            session_id=session_id,
+            bearer_token=bearer_token,
+            stream=True,
+        )
+
+    return _send_with_auth()
+
+
 if __name__ == "__main__":
     # Parse command-line arguments
     parser = argparse.ArgumentParser(description="Connect to a Bedrock agent")
     parser.add_argument(
         "--agent",
-        choices=["monitor", "websearch"],
+        choices=["monitor", "websearch", "host"],
         required=True,
-        help="Agent to connect to: 'monitor' or 'websearch'",
+        help="Agent to connect to: 'monitor', 'websearch', or 'host'",
     )
     args = parser.parse_args()
 
@@ -181,38 +285,67 @@ if __name__ == "__main__":
         selected_provider_name = moniter_provider_name
         selected_agent_arn = moniter_agent_arn
         print(f"\n🔍 Using Monitor Agent (ID: {moniter_agent_id})")
-    else:  # websearch
+    elif args.agent == "websearch":
         selected_provider_name = websearch_provider_name
         selected_agent_arn = websearch_agent_arn
         print(f"\n🔍 Using WebSearch Agent (ID: {websearch_agent_id})")
+    else:  # host
+        selected_provider_name = hostagent_provider_name
+        selected_agent_arn = hostagent_agent_arn
+        print(f"\n🔍 Using Host Agent (ID: {hostagent_agent_id})")
 
-    # First, fetch and display the agent card
-    print("\n📋 Fetching agent card...\n")
-    card = fetch_agent_card(selected_provider_name, selected_agent_arn)
+    # For host agent, use direct endpoint invocation without fetching agent card
+    if args.agent == "host":
+        # Start interactive session for host agent
+        session_id = str(uuid4())
+        print(f"\n🤖 Starting interactive session (Session ID: {session_id})")
+        print("Type 'q' or 'quit' to exit.\n")
 
-    if not card:
-        print("❌ Failed to fetch agent card. Exiting.")
-        exit(1)
+        while True:
+            user_input = input("👤 You: ").strip()
 
-    # Start interactive session
-    session_id = str(uuid4())
-    print(f"\n🤖 Starting interactive session (Session ID: {session_id})")
-    print("Type 'q' or 'quit' to exit.\n")
+            if user_input.lower() in ["q", "quit"]:
+                print("👋 Goodbye!")
+                break
 
-    while True:
-        user_input = input("👤 You: ").strip()
+            if not user_input:
+                continue
 
-        if user_input.lower() in ["q", "quit"]:
-            print("👋 Goodbye!")
-            break
-
-        if not user_input:
-            continue
-
-        # Send message using async A2A protocol
-        asyncio.run(
-            send_message(
+            # Send message using direct endpoint invocation
+            print("\n🤖 Assistant: ", end="", flush=True)
+            send_message_to_host(
                 user_input, session_id, selected_provider_name, selected_agent_arn
             )
-        )
-        print()
+            print("\n")
+    else:
+        # For monitor and websearch agents, use A2A protocol
+        # First, fetch and display the agent card
+        print("\n📋 Fetching agent card...\n")
+        card = fetch_agent_card(selected_provider_name, selected_agent_arn)
+
+        if not card:
+            print("❌ Failed to fetch agent card. Exiting.")
+            exit(1)
+
+        # Start interactive session
+        session_id = str(uuid4())
+        print(f"\n🤖 Starting interactive session (Session ID: {session_id})")
+        print("Type 'q' or 'quit' to exit.\n")
+
+        while True:
+            user_input = input("👤 You: ").strip()
+
+            if user_input.lower() in ["q", "quit"]:
+                print("👋 Goodbye!")
+                break
+
+            if not user_input:
+                continue
+
+            # Send message using async A2A protocol
+            asyncio.run(
+                send_message(
+                    user_input, session_id, selected_provider_name, selected_agent_arn
+                )
+            )
+            print()
