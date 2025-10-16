@@ -38,17 +38,27 @@ async def call_agent(payload: dict, context):
     # if not actor_id:
     #     raise Exception("Actor id is not is not set")
     # TODO: Actor Id
-    session_service.create_session(
-        app_name=APP_NAME, user_id="Actor 1", session_id=session_id
-    )
+    # Ensure session exists before running
+    user_id = "Actor 1"
+
+    # Get or create session
+    try:
+        session = await session_service.get_session(
+            app_name=APP_NAME, user_id=user_id, session_id=session_id
+        )
+    except Exception:
+        # Session doesn't exist, create it
+        await session_service.create_session(
+            app_name=APP_NAME, user_id=user_id, session_id=session_id
+        )
+
     runner = Runner(
         agent=root_agent, app_name=APP_NAME, session_service=session_service
     )
 
     content = types.Content(role="user", parts=[types.Part(text=query)])
-    # TODO: Actor Id
 
-    events = runner.run(user_id="Actor 1", session_id=session_id, new_message=content)
+    events = runner.run(user_id=user_id, session_id=session_id, new_message=content)
 
     for event in events:
         yield event
