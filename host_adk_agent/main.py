@@ -2,7 +2,6 @@ from google.adk.sessions import InMemorySessionService
 from google.adk.runners import Runner
 from google.genai import types
 from bedrock_agentcore import BedrockAgentCoreApp
-from agent import root_agent
 
 
 APP_NAME = "HostAgentA2A"
@@ -14,9 +13,7 @@ session_service = InMemorySessionService()
 
 @app.entrypoint
 async def call_agent(payload: dict, context):
-    # Session and Runner
-
-    # query: str, session_id: str, actor_id: str
+    from agent import root_agent
 
     query = payload.get("prompt")
     if not query:
