@@ -126,6 +126,8 @@ Resources:
                   - bedrock-agentcore:BatchUpdateMemoryRecords
                   - bedrock-agentcore:ListActors
                   - bedrock-agentcore:ListEvents
+                  - bedrock-agentcore:CreateEvent
+                  - bedrock-agentcore:GetEvent
                 Resource:
                   - !GetAtt AgentMemory.MemoryArn
                   - !Sub '${AgentMemory.MemoryArn}/*'

@@ -83,9 +83,6 @@ export function ChatProvider({ children }: ChatProviderProps) {
             continue
           }
 
-          // Debug: Log event structure
-          console.log('[useChat] Event received:', JSON.stringify(event).substring(0, 200))
-
           // Handle nested event structure: {event: {contentBlockDelta: {delta: {text: "..."}}}}
           if ('event' in event && event.event && typeof event.event === 'object') {
             const innerEvent = event.event as any;

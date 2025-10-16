@@ -45,10 +45,16 @@ async def call_agent(payload: dict, context):
     # Ensure session exists before running
     user_id = "Actor 1"
 
-    # Session doesn't exist, create it
-    await session_service.create_session(
-        app_name=APP_NAME, user_id=user_id, session_id=session_id
-    )
+    # Check if session exists, only create if it doesn't
+    try:
+        await session_service.get_session(
+            app_name=APP_NAME, user_id=user_id, session_id=session_id
+        )
+    except:
+        # Session doesn't exist, create it
+        await session_service.create_session(
+            app_name=APP_NAME, user_id=user_id, session_id=session_id
+        )
 
     runner = Runner(
         agent=root_agent, app_name=APP_NAME, session_service=session_service
