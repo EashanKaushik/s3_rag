@@ -84,6 +84,8 @@ idna==3.11
     #   anyio
     #   httpx
     #   requests
+importlib-metadata==8.7.0
+    # via opentelemetry-api
 jinja2==3.1.6
     # via bedrock-agentcore-starter-toolkit
 jiter==0.11.0
@@ -121,8 +123,34 @@ openapi-schema-validator==0.6.3
     # via openapi-spec-validator
 openapi-spec-validator==0.7.2
     # via bedrock-agentcore-starter-toolkit
+openinference-instrumentation==0.1.40
+    # via openinference-instrumentation-openai-agents
+openinference-instrumentation-openai-agents==1.3.0
+    # via web-search-openai-agents (pyproject.toml)
+openinference-semantic-conventions==0.1.24
+    # via
+    #   openinference-instrumentation
+    #   openinference-instrumentation-openai-agents
+opentelemetry-api==1.38.0
+    # via
+    #   openinference-instrumentation
+    #   openinference-instrumentation-openai-agents
+    #   opentelemetry-instrumentation
+    #   opentelemetry-sdk
+    #   opentelemetry-semantic-conventions
+opentelemetry-instrumentation==0.59b0
+    # via openinference-instrumentation-openai-agents
+opentelemetry-sdk==1.38.0
+    # via openinference-instrumentation
+opentelemetry-semantic-conventions==0.59b0
+    # via
+    #   openinference-instrumentation-openai-agents
+    #   opentelemetry-instrumentation
+    #   opentelemetry-sdk
 packaging==25.0
-    # via prance
+    # via
+    #   opentelemetry-instrumentation
+    #   prance
 pathable==0.4.4
     # via jsonschema-path
 prance==25.4.8.0
@@ -246,6 +274,10 @@ typing-extensions==4.15.0
     #   bedrock-agentcore-starter-toolkit
     #   openai
     #   openai-agents
+    #   openinference-instrumentation-openai-agents
+    #   opentelemetry-api
+    #   opentelemetry-sdk
+    #   opentelemetry-semantic-conventions
     #   pydantic
     #   pydantic-core
     #   typer
@@ -268,3 +300,10 @@ uvicorn==0.37.0
     #   mcp
 wcwidth==0.2.14
     # via prompt-toolkit
+wrapt==1.17.3
+    # via
+    #   openinference-instrumentation
+    #   openinference-instrumentation-openai-agents
+    #   opentelemetry-instrumentation
+zipp==3.23.0
+    # via importlib-metadata

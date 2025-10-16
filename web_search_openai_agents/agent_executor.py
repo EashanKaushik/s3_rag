@@ -12,6 +12,7 @@ from a2a.types import (
 )
 from a2a.utils import new_agent_text_message, new_task
 from a2a.utils.errors import ServerError
+from openai.types.responses import ResponseTextDeltaEvent
 
 from agent import _call_agent_stream, create_agent
 
@@ -43,7 +44,6 @@ class WebSearchAgentExecutor(AgentExecutor):
     ) -> None:
         """Execute agent with streaming and update task status incrementally."""
         accumulated_text = ""
-        final_output = ""
 
         try:
             async for stream_event in _call_agent_stream(agent, user_message):
@@ -64,60 +64,31 @@ class WebSearchAgentExecutor(AgentExecutor):
                     event_type = getattr(event, "type", None)
                     logger.info(f"Stream event type: {event_type}")
 
-                    # Handle raw_response_event - token by token streaming
-                    if event_type == "raw_response_event":
-                        # Check if this is a text delta event
-                        if hasattr(event, "data") and hasattr(event.data, "delta"):
-                            text_chunk = event.data.delta
-                            if text_chunk:
-                                accumulated_text += text_chunk
-                                logger.debug(f"Text delta: {text_chunk}")
-                                # Send incremental update
-                                await updater.update_status(
-                                    TaskState.working,
-                                    new_agent_text_message(
-                                        accumulated_text,
-                                        updater.context_id,
-                                        updater.task_id,
-                                    ),
-                                )
+                    # Only handle raw_response_event with ResponseTextDeltaEvent
+                    if event_type == "raw_response_event" and isinstance(event.data, ResponseTextDeltaEvent):
+                        text_chunk = event.data.delta
+                        if text_chunk:
+                            accumulated_text += text_chunk
+                            logger.debug(f"Text delta: {text_chunk}")
+                            # Send incremental update
+                            await updater.update_status(
+                                TaskState.working,
+                                new_agent_text_message(
+                                    accumulated_text,
+                                    updater.context_id,
+                                    updater.task_id,
+                                ),
+                            )
 
-                    # Handle run_item_stream_event - completed items
-                    elif event_type == "run_item_stream_event":
-                        if hasattr(event, "item"):
-                            item = event.item
-                            item_type = getattr(item, "type", None)
-                            logger.info(f"Run item type: {item_type}")
-
-                            # Handle message output items
-                            if item_type == "message_output_item":
-                                if hasattr(item, "output"):
-                                    output = item.output
-                                    if hasattr(output, "content"):
-                                        for content_item in output.content:
-                                            if hasattr(content_item, "text"):
-                                                text = content_item.text
-                                                final_output += text
-                                                logger.info(f"Got message output: {text[:200]}...")
-
-                            # Handle tool call output items
-                            elif item_type == "tool_call_output_item":
-                                if hasattr(item, "output"):
-                                    logger.info(f"Tool output: {item.output}")
-
-                    # Handle agent_updated_stream_event
-                    elif event_type == "agent_updated_stream_event":
-                        if hasattr(event, "new_agent"):
-                            logger.info(f"Agent updated: {event.new_agent.name}")
-
-            # Use final_output if available, otherwise use accumulated_text
-            output_text = final_output or accumulated_text
+                    # Log other event types for debugging but don't process them
+                    else:
+                        logger.debug(f"Ignoring event type: {event_type}")
 
             # Add final result as artifact
-            if output_text:
+            if accumulated_text:
                 await updater.add_artifact(
-                    [Part(root=TextPart(text=output_text))],
-                    name="search_result",
+                    [Part(root=TextPart(text=accumulated_text))],
+                    name="agent_response",
                 )
 
             await updater.complete()
@@ -144,9 +115,9 @@ class WebSearchAgentExecutor(AgentExecutor):
             session_id = headers.get("x-amzn-bedrock-agentcore-runtime-session-id")
             actor_id = headers.get("x-amzn-bedrock-agentcore-runtime-user-id", actor_id)
 
-        # if not session_id:
-        #     logger.error("Session ID is not set")
-        #     raise ServerError(error=InvalidParamsError())
+        if not session_id:
+            logger.error("Session ID is not set")
+            raise ServerError(error=InvalidParamsError())
 
         # Get or create task
         task = context.current_task

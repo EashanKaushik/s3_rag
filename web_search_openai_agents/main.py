@@ -1,14 +1,18 @@
-from pathlib import Path
-from dotenv import load_dotenv
 from a2a.server.apps import A2AStarletteApplication
 from a2a.server.request_handlers import DefaultRequestHandler
 from a2a.server.tasks import InMemoryTaskStore
 from a2a.types import AgentCapabilities, AgentCard, AgentSkill
 from agent_executor import WebSearchAgentExecutor
+from dotenv import load_dotenv
+from openinference.instrumentation.openai_agents import OpenAIAgentsInstrumentor
+from pathlib import Path
 from starlette.responses import JSONResponse
 import logging
 import os
 import uvicorn
+
+OpenAIAgentsInstrumentor().instrument()
+
 
 # Load environment variables from .env file
 env_path = Path(__file__).parent / ".env"
