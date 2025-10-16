@@ -16,6 +16,18 @@ root_agent = None
 @app.entrypoint
 async def call_agent(payload: dict, context):
     global root_agent
+
+    # Debug: Log context and headers
+    import json
+    app.logger.info(f"Context type: {type(context)}")
+    app.logger.info(f"Context session_id: {context.session_id}")
+
+    if hasattr(context, 'request_headers'):
+        headers = context.request_headers
+        app.logger.info(f"Request headers: {json.dumps(headers)}")
+    else:
+        app.logger.warning("No request_headers attribute on context")
+
     if not root_agent:
         # Import agent creation inside entrypoint so workload identity is available
         from agent import getroot_agent
@@ -41,9 +53,6 @@ async def call_agent(payload: dict, context):
 
     if not session_id:
         raise Exception("Context session_id is not set")
-
-    # request_headers = context.request_headers
-    # app.logger.info("Headers: %s", json.dumps(request_headers))
 
     # actor_id = request_headers["x-amzn-bedrock-agentCore-runtime-custom-actor"]
 
