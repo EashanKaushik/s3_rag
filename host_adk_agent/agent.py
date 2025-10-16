@@ -46,6 +46,7 @@ def _create_client_factory(provider_name: str, agent_arn: str) -> ClientFactory:
         headers = {
             "Authorization": f"Bearer {bearer_token}",
             "X-Amzn-Bedrock-AgentCore-Runtime-Session-Id": str(uuid4()),
+            # TODO: Actor Id
             "X-Amzn-Bedrock-AgentCore-Runtime-User-Id": "ActorID",
         }
 
@@ -64,39 +65,47 @@ def _create_client_factory(provider_name: str, agent_arn: str) -> ClientFactory:
     return _create()
 
 
-# Create monitor agent
-monitor_agent_card_url = (
-    f"https://bedrock-agentcore.{region}.amazonaws.com/runtimes/"
-    f"{quote(MONITOR_AGENT_ARN, safe='')}/invocations/.well-known/agent-card.json"
-)
+def getroot_agent():
+    """
+    Lazy initialization of the root agent.
+    This is called inside the entrypoint where workload identity is available.
+    """
 
-monitor_agent = RemoteA2aAgent(
-    name="monitor_agent",
-    description="Agent that handles monitoring tasks.",
-    agent_card=monitor_agent_card_url,
-    a2a_client_factory=_create_client_factory(MONITOR_PROVIDER_NAME, MONITOR_AGENT_ARN),
-)
+    # Create monitor agent
+    monitor_agent_card_url = (
+        f"https://bedrock-agentcore.{region}.amazonaws.com/runtimes/"
+        f"{quote(MONITOR_AGENT_ARN, safe='')}/invocations/.well-known/agent-card.json"
+    )
 
-# Create websearch agent
-websearch_agent_card_url = (
-    f"https://bedrock-agentcore.{region}.amazonaws.com/runtimes/"
-    f"{quote(WEBSEARCH_AGENT_ARN, safe='')}/invocations/.well-known/agent-card.json"
-)
+    monitor_agent = RemoteA2aAgent(
+        name="monitor_agent",
+        description="Agent that handles monitoring tasks.",
+        agent_card=monitor_agent_card_url,
+        a2a_client_factory=_create_client_factory(
+            MONITOR_PROVIDER_NAME, MONITOR_AGENT_ARN
+        ),
+    )
 
-websearch_agent = RemoteA2aAgent(
-    name="websearch_agent",
-    description="Web search agent for finding AWS solutions, documentation, and best practices.",
-    agent_card=websearch_agent_card_url,
-    a2a_client_factory=_create_client_factory(
-        WEBSEARCH_PROVIDER_NAME, WEBSEARCH_AGENT_ARN
-    ),
-)
+    # Create websearch agent
+    websearch_agent_card_url = (
+        f"https://bedrock-agentcore.{region}.amazonaws.com/runtimes/"
+        f"{quote(WEBSEARCH_AGENT_ARN, safe='')}/invocations/.well-known/agent-card.json"
+    )
 
-# Create root agent
-root_agent = Agent(
-    model="gemini-2.0-flash",
-    name="root_agent",
-    instruction="""You are an efficient orchestration agent for AWS monitoring and operations.
+    websearch_agent = RemoteA2aAgent(
+        name="websearch_agent",
+        description="Web search agent for finding AWS solutions, documentation, and best practices.",
+        agent_card=websearch_agent_card_url,
+        a2a_client_factory=_create_client_factory(
+            WEBSEARCH_PROVIDER_NAME, WEBSEARCH_AGENT_ARN
+        ),
+    )
+
+    # Create root agent
+    root_agent = Agent(
+        model="gemini-2.0-flash",
+        name="root_agent",
+        instruction="""You are an efficient orchestration agent for AWS monitoring and operations.
 
 Your role:
 1. Break down user questions into sub-tasks and delegate appropriately
@@ -110,5 +119,11 @@ Available sub-agents:
 - websearch_agent: Web search agent for finding AWS solutions, documentation, and best practices
 
 Focus exclusively on AWS-related monitoring and operations tasks.""",
-    sub_agents=[monitor_agent, websearch_agent],
-)
+        sub_agents=[monitor_agent, websearch_agent],
+    )
+
+    return root_agent
+
+
+if not IS_DOCKER:
+    root_agent = getroot_agent()

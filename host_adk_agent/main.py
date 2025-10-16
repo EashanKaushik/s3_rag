@@ -10,10 +10,18 @@ app = BedrockAgentCoreApp()
 
 session_service = InMemorySessionService()
 
+root_agent = None
+
 
 @app.entrypoint
 async def call_agent(payload: dict, context):
-    from agent import root_agent
+    global root_agent
+    if not root_agent:
+        # Import agent creation inside entrypoint so workload identity is available
+        from agent import get_root_agent
+
+        # Get or create the root agent (will be created on first call)
+        root_agent = get_root_agent()
 
     query = payload.get("prompt")
     if not query:
