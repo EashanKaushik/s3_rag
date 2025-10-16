@@ -18,10 +18,10 @@ async def call_agent(payload: dict, context):
     global root_agent
     if not root_agent:
         # Import agent creation inside entrypoint so workload identity is available
-        from agent import get_root_agent
+        from agent import getroot_agent
 
         # Get or create the root agent (will be created on first call)
-        root_agent = get_root_agent()
+        root_agent = getroot_agent()
 
     query = payload.get("prompt")
     if not query:
