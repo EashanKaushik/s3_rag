@@ -17,33 +17,21 @@ root_agent = None
 async def call_agent(payload: dict, context):
     global root_agent
 
-    # Debug: Log context and headers
-    import json
-    app.logger.info(f"Context type: {type(context)}")
-    app.logger.info(f"Context session_id: {context.session_id}")
+    from bedrock_agentcore.runtime.context import BedrockAgentCoreContext
 
-    if hasattr(context, 'request_headers'):
-        headers = context.request_headers
-        app.logger.info(f"Request headers: {json.dumps(headers)}")
-    else:
-        app.logger.warning("No request_headers attribute on context")
+    # Debug: Check if workload token is set
+    try:
+        token = BedrockAgentCoreContext.get_workload_access_token()
+        app.logger.info(f"Workload token is set: {token[:20] if token else 'None'}...")
+    except Exception as e:
+        app.logger.error(f"Workload token not available: {e}")
 
-    if not root_agent:
-        # Import agent creation inside entrypoint so workload identity is available
-        from agent import getroot_agent
-        from bedrock_agentcore.runtime.context import BedrockAgentCoreContext
+    # if not root_agent:
+    #     # Import agent creation inside entrypoint so workload identity is available
+    #     from agent import getroot_agent
 
-        # Debug: Check if workload token is set
-        try:
-            token = BedrockAgentCoreContext.get_workload_access_token()
-            app.logger.info(
-                f"Workload token is set: {token[:20] if token else 'None'}..."
-            )
-        except Exception as e:
-            app.logger.error(f"Workload token not available: {e}")
-
-        # Get or create the root agent (will be created on first call)
-        root_agent = getroot_agent()
+    #     # Get or create the root agent (will be created on first call)
+    #     root_agent = getroot_agent()
 
     query = payload.get("prompt")
     if not query:
@@ -58,22 +46,22 @@ async def call_agent(payload: dict, context):
 
     # if not actor_id:
     #     raise Exception("Actor id is not is not set")
+    yield "Hello"
+    # # TODO: Actor Id
+    # session_service.create_session(
+    #     app_name=APP_NAME, user_id="Actor 1", session_id=session_id
+    # )
+    # runner = Runner(
+    #     agent=root_agent, app_name=APP_NAME, session_service=session_service
+    # )
 
-    # TODO: Actor Id
-    session_service.create_session(
-        app_name=APP_NAME, user_id="Actor 1", session_id=session_id
-    )
-    runner = Runner(
-        agent=root_agent, app_name=APP_NAME, session_service=session_service
-    )
+    # content = types.Content(role="user", parts=[types.Part(text=query)])
+    # # TODO: Actor Id
 
-    content = types.Content(role="user", parts=[types.Part(text=query)])
-    # TODO: Actor Id
+    # events = runner.run(user_id="Actor 1", session_id=session_id, new_message=content)
 
-    events = runner.run(user_id="Actor 1", session_id=session_id, new_message=content)
-
-    for event in events:
-        yield event
+    # for event in events:
+    #     yield event
     #     if event.is_final_response() and event.content:
     #         final_answer = event.content.parts[0].text.strip()
 
