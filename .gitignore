@@ -216,3 +216,5 @@ __marimo__/
 .streamlit/secrets.toml
 .DS_Store
 params.json
+.agentcore.json
+monitoring_strands_agent/tests/
