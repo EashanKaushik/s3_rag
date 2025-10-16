@@ -64,7 +64,7 @@ async def call_agent(payload: dict, context):
 
     events = runner.run(user_id=user_id, session_id=session_id, new_message=content)
 
-    for event in events:
+    async for event in events:
         yield event
 
 
