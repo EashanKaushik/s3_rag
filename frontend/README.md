@@ -1,8 +1,8 @@
-# Customer Support Assistant Frontend
+# A2A on Amzon Bedrock AgentCore Runtime Frontend
 
 ## Overview
 
-This is a single-page application that provides a chat interface for interacting with Customer Support Assistant. The app handles OAuth authentication via AWS Cognito, streams responses from the agent in real-time, and displays the complete agentic workflow including tool invocations and their results.
+This is a single-page application that provides a chat interface for interacting with Host Google ADK Agent. The app handles OAuth authentication via AWS Cognito, streams responses from the agent in real-time, and displays the complete agentic workflow including tool invocations and their results.
 
 ## Getting Started
 

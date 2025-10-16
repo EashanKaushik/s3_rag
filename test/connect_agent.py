@@ -15,8 +15,14 @@ from bedrock_agentcore.identity.auth import requires_access_token
 
 from utils import get_ssm_parameter, get_aws_info
 
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(level=logging.WARNING)
 logger = logging.getLogger(__name__)
+
+# Suppress debug output from specific libraries
+logging.getLogger("bedrock_agentcore").setLevel(logging.ERROR)
+logging.getLogger("bedrock_agentcore.identity_client").setLevel(logging.ERROR)
+logging.getLogger("botocore").setLevel(logging.ERROR)
+logging.getLogger("botocore.credentials").setLevel(logging.ERROR)
 
 DEFAULT_TIMEOUT = 300  # set request timeout to 5 minutes
 
@@ -53,124 +59,102 @@ def create_message(*, role: Role = Role.user, text: str) -> Message:
     )
 
 
-def fetch_agent_card(provider_name: str, agent_arn: str):
+def fetch_agent_card(bearer_token: str, agent_arn: str):
     """Fetch agent card from the runtime endpoint."""
+    # URL encode the agent ARN
+    escaped_agent_arn = quote(agent_arn, safe="")
 
-    @requires_access_token(
-        provider_name=provider_name,
-        scopes=[],
-        auth_flow="M2M",
-        into="bearer_token",
-        force_authentication=True,
-    )
-    def _fetch_with_auth(bearer_token: str = str()):
-        # URL encode the agent ARN
-        escaped_agent_arn = quote(agent_arn, safe="")
+    # Construct the URL
+    url = f"https://bedrock-agentcore.{region}.amazonaws.com/runtimes/{escaped_agent_arn}/invocations/.well-known/agent-card.json"
 
-        # Construct the URL
-        url = f"https://bedrock-agentcore.{region}.amazonaws.com/runtimes/{escaped_agent_arn}/invocations/.well-known/agent-card.json"
+    # Generate a unique session ID
+    session_id = str(uuid4())
+    logger.info(f"Fetching agent card with session ID: {session_id}")
 
-        # Generate a unique session ID
-        session_id = str(uuid4())
-        logger.info(f"Fetching agent card with session ID: {session_id}")
+    # Set headers
+    headers = {
+        "Accept": "*/*",
+        "Authorization": f"Bearer {bearer_token}",
+        "X-Amzn-Bedrock-AgentCore-Runtime-Session-Id": session_id,
+    }
 
-        # Set headers
-        headers = {
-            "Accept": "*/*",
-            "Authorization": f"Bearer {bearer_token}",
-            "X-Amzn-Bedrock-AgentCore-Runtime-Session-Id": session_id,
-        }
+    try:
+        # Make the request
+        response = requests.get(url, headers=headers)
+        response.raise_for_status()
 
-        try:
-            # Make the request
-            response = requests.get(url, headers=headers)
-            response.raise_for_status()
+        # Parse and return agent card
+        agent_card = response.json()
+        logger.info("Agent card fetched successfully")
+        logger.info(json.dumps(agent_card, indent=2))
+        return agent_card
 
-            # Parse and return agent card
-            agent_card = response.json()
-            logger.info("Agent card fetched successfully")
-            logger.info(json.dumps(agent_card, indent=2))
-            return agent_card
-
-        except requests.exceptions.RequestException as e:
-            logger.error(f"Error fetching agent card: {e}")
-            return None
-
-    return _fetch_with_auth()
+    except requests.exceptions.RequestException as e:
+        logger.error(f"Error fetching agent card: {e}")
+        return None
 
 
 async def send_message(
-    message: str, session_id: str, provider_name: str, agent_arn: str
+    message: str, session_id: str, bearer_token: str, agent_arn: str
 ):
     """Send a message to the agent using A2A protocol."""
+    # Construct runtime URL
+    escaped_agent_arn = quote(agent_arn, safe="")
+    runtime_url = f"https://bedrock-agentcore.{region}.amazonaws.com/runtimes/{escaped_agent_arn}/invocations"
 
-    @requires_access_token(
-        provider_name=provider_name,
-        scopes=[],
-        auth_flow="M2M",
-        into="bearer_token",
-        force_authentication=True,
-    )
-    async def _send_with_auth(bearer_token: str = str()):
-        # Construct runtime URL
-        escaped_agent_arn = quote(agent_arn, safe="")
-        runtime_url = f"https://bedrock-agentcore.{region}.amazonaws.com/runtimes/{escaped_agent_arn}/invocations"
+    # Add authentication headers
+    headers = {
+        "Authorization": f"Bearer {bearer_token}",
+        "X-Amzn-Bedrock-AgentCore-Runtime-Session-Id": session_id,
+        "X-Amzn-Bedrock-AgentCore-Runtime-User-Id": "ActorID",
+    }
 
-        # Add authentication headers
-        headers = {
-            "Authorization": f"Bearer {bearer_token}",
-            "X-Amzn-Bedrock-AgentCore-Runtime-Session-Id": session_id,
-            "X-Amzn-Bedrock-AgentCore-Runtime-User-Id": "ActorID",
-        }
+    print("\n🤖 Assistant: ", end="", flush=True)
 
-        async with httpx.AsyncClient(
-            timeout=DEFAULT_TIMEOUT, headers=headers
-        ) as httpx_client:
-            # Get agent card from the runtime URL
-            resolver = A2ACardResolver(httpx_client=httpx_client, base_url=runtime_url)
-            agent_card = await resolver.get_agent_card()
+    async with httpx.AsyncClient(
+        timeout=DEFAULT_TIMEOUT, headers=headers
+    ) as httpx_client:
+        # Get agent card from the runtime URL
+        resolver = A2ACardResolver(httpx_client=httpx_client, base_url=runtime_url)
+        agent_card = await resolver.get_agent_card()
 
-            # Create client using factory
-            config = ClientConfig(
-                httpx_client=httpx_client,
-                streaming=False,  # Use non-streaming mode for sync response
-            )
-            factory = ClientFactory(config)
-            client = factory.create(agent_card)
+        # Create client using factory
+        config = ClientConfig(
+            httpx_client=httpx_client,
+            streaming=False,  # Use non-streaming mode for sync response
+        )
+        factory = ClientFactory(config)
+        client = factory.create(agent_card)
 
-            # Create and send message
-            msg = create_message(text=message)
+        # Create and send message
+        msg = create_message(text=message)
 
-            # With streaming=False, this will yield exactly one result
-            async for event in client.send_message(msg):
-                if isinstance(event, Message):
-                    logger.info("Received message response")
-                    logger.info(event.model_dump_json(exclude_none=True, indent=2))
+        # With streaming=False, this will yield exactly one result
+        async for event in client.send_message(msg):
+            if isinstance(event, Message):
+                # Extract and print text content from Message
+                for part in event.parts:
+                    if hasattr(part, "text") and part.text:
+                        print(part.text, flush=True)
 
-                    # Extract and print text content
-                    print("\n🤖 Assistant: ", end="", flush=True)
-                    for part in event.parts:
-                        if hasattr(part, "text"):
-                            print(part.text, flush=True)
+                return event
+            elif isinstance(event, tuple) and len(event) == 2:
+                # (Task, UpdateEvent) tuple - extract text from Task artifacts
+                task, update_event = event
 
-                    return event
-                elif isinstance(event, tuple) and len(event) == 2:
-                    # (Task, UpdateEvent) tuple
-                    task, update_event = event
-                    logger.info(
-                        f"Task: {task.model_dump_json(exclude_none=True, indent=2)}"
-                    )
-                    if update_event:
-                        logger.info(
-                            f"Update: {update_event.model_dump_json(exclude_none=True, indent=2)}"
-                        )
-                    return task
-                else:
-                    # Fallback for other response types
-                    logger.info(f"Response: {str(event)}")
-                    return event
+                # Extract text from task artifacts
+                if hasattr(task, "artifacts") and task.artifacts:
+                    for artifact in task.artifacts:
+                        if hasattr(artifact, "parts") and artifact.parts:
+                            for part in artifact.parts:
+                                # The part has a 'root' attribute containing the actual TextPart
+                                if hasattr(part, "root") and hasattr(part.root, "text"):
+                                    print(part.root.text, flush=True)
 
-    return await _send_with_auth()
+                return task
+            else:
+                # Fallback for other response types
+                return event
 
 
 def invoke_endpoint(
@@ -204,7 +188,7 @@ def invoke_endpoint(
         params={"qualifier": endpoint_name},
         headers=headers,
         json=body,
-        timeout=100,
+        timeout=DEFAULT_TIMEOUT,
         stream=stream,
     )
 
@@ -214,11 +198,18 @@ def invoke_endpoint(
             flush=True,
         )
     else:
-        last_data = False
-
         for line in response.iter_lines(chunk_size=1):
             if line:
                 line = line.decode("utf-8")
+
+                # Skip lines that look like Python object representations (debug output)
+                if (
+                    line.startswith("content=")
+                    or line.startswith("  ")
+                    or "grounding_metadata=" in line
+                ):
+                    continue
+
                 if line.startswith("data: "):
                     data_content = line[6:]  # Remove "data: " prefix
 
@@ -226,8 +217,32 @@ def invoke_endpoint(
                         # Try to parse as JSON
                         parsed = json.loads(data_content)
 
+                        # Check for transfer_to_agent action
+                        if isinstance(parsed, dict) and "actions" in parsed:
+                            actions = parsed.get("actions", {})
+                            transfer_agent = actions.get("transfer_to_agent")
+                            if transfer_agent:
+                                print(
+                                    f"\n[Transferring to agent: {transfer_agent}]\n",
+                                    flush=True,
+                                )
+
+                        # Check for the response format with content.parts[].text
+                        if isinstance(parsed, dict) and "content" in parsed:
+                            content = parsed.get("content", {})
+                            parts = content.get("parts", [])
+                            for part in parts:
+                                if (
+                                    isinstance(part, dict)
+                                    and "text" in part
+                                    and part["text"] is not None
+                                ):
+                                    text = part["text"]
+                                    # Handle escaped newlines
+                                    text = text.replace("\\n", "\n")
+                                    print(text, end="", flush=True)
                         # Check for complex event structure with contentBlockDelta
-                        if isinstance(parsed, dict) and "event" in parsed:
+                        elif isinstance(parsed, dict) and "event" in parsed:
                             event = parsed["event"]
                             if isinstance(event, dict) and "contentBlockDelta" in event:
                                 delta = event["contentBlockDelta"].get("delta", {})
@@ -240,14 +255,26 @@ def invoke_endpoint(
                             text = parsed.replace("\\n", "\n")
                             print(text, end="", flush=True)
                     except json.JSONDecodeError:
-                        # If not JSON, just print the raw data
-                        print(data_content, end="", flush=True)
+                        # Silently skip non-JSON data
+                        pass
 
 
 def send_message_to_host(
-    message: str, session_id: str, provider_name: str, agent_arn: str
+    message: str, session_id: str, bearer_token: str, agent_arn: str
 ):
     """Send a message to the host agent using direct endpoint invocation."""
+    payload = {"prompt": message}
+    invoke_endpoint(
+        agent_arn=agent_arn,
+        payload=payload,
+        session_id=session_id,
+        bearer_token=bearer_token,
+        stream=True,
+    )
+
+
+def get_bearer_token(provider_name: str):
+    """Get bearer token for authentication (call once per session)."""
 
     @requires_access_token(
         provider_name=provider_name,
@@ -256,17 +283,10 @@ def send_message_to_host(
         into="bearer_token",
         force_authentication=True,
     )
-    def _send_with_auth(bearer_token: str = str()):
-        payload = {"prompt": message}
-        invoke_endpoint(
-            agent_arn=agent_arn,
-            payload=payload,
-            session_id=session_id,
-            bearer_token=bearer_token,
-            stream=True,
-        )
+    def _get_token(bearer_token: str = str()):
+        return bearer_token
 
-    return _send_with_auth()
+    return _get_token()
 
 
 if __name__ == "__main__":
@@ -296,9 +316,13 @@ if __name__ == "__main__":
 
     # For host agent, use direct endpoint invocation without fetching agent card
     if args.agent == "host":
+        # Get bearer token once at the start of the session
+        print("\n🔐 Authenticating...")
+        bearer_token = get_bearer_token(selected_provider_name)
+
         # Start interactive session for host agent
         session_id = str(uuid4())
-        print(f"\n🤖 Starting interactive session (Session ID: {session_id})")
+        print(f"🤖 Starting interactive session (Session ID: {session_id})")
         print("Type 'q' or 'quit' to exit.\n")
 
         while True:
@@ -311,21 +335,32 @@ if __name__ == "__main__":
             if not user_input:
                 continue
 
-            # Send message using direct endpoint invocation
+            # Send message using direct endpoint invocation with reused token
             print("\n🤖 Assistant: ", end="", flush=True)
             send_message_to_host(
-                user_input, session_id, selected_provider_name, selected_agent_arn
+                user_input, session_id, bearer_token, selected_agent_arn
             )
             print("\n")
     else:
         # For monitor and websearch agents, use A2A protocol
-        # First, fetch and display the agent card
-        print("\n📋 Fetching agent card...\n")
-        card = fetch_agent_card(selected_provider_name, selected_agent_arn)
+        # Get bearer token once at the start of the session
+        print("\n🔐 Authenticating...")
+        bearer_token = get_bearer_token(selected_provider_name)
+
+        # Fetch and display the agent card
+        print("📋 Fetching agent card...\n")
+        card = fetch_agent_card(bearer_token, selected_agent_arn)
 
         if not card:
             print("❌ Failed to fetch agent card. Exiting.")
             exit(1)
+
+        # Display raw agent card
+        print("=" * 60)
+        print("AGENT CARD")
+        print("=" * 60)
+        print(json.dumps(card, indent=2))
+        print("=" * 60)
 
         # Start interactive session
         session_id = str(uuid4())
@@ -342,10 +377,8 @@ if __name__ == "__main__":
             if not user_input:
                 continue
 
-            # Send message using async A2A protocol
+            # Send message using async A2A protocol with reused token
             asyncio.run(
-                send_message(
-                    user_input, session_id, selected_provider_name, selected_agent_arn
-                )
+                send_message(user_input, session_id, bearer_token, selected_agent_arn)
             )
             print()

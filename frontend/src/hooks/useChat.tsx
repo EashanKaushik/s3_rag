@@ -5,7 +5,7 @@ import { generateUUID } from '../utils';
 
 interface ChatContextType extends ChatState {
   sendMessage: (message: string, bearerToken: string, actorId: string) => Promise<void>;
-  initializeConversation: (email: string, bearerToken: string, actorId: string) => Promise<void>;
+  initializeConversation: (bearerToken: string, actorId: string) => Promise<void>;
   clearMessages: () => void;
   isInitialized: boolean;
   initializationError: string | null;
@@ -35,7 +35,7 @@ export function ChatProvider({ children }: ChatProviderProps) {
     const region = import.meta.env.VITE_AWS_REGION;
 
     if (!agentArn) {
-      setInitializationError('Agent ARN not configured. Please set VITE_AGENT_ARN in .env file');
+      setInitializationError('Agent ARN not configured. Please run setup script or set VITE_AGENT_ARN in .env file');
       return;
     }
 
@@ -64,8 +64,8 @@ export function ChatProvider({ children }: ChatProviderProps) {
       const startTime = Date.now();
       let accumulatedResponse = '';
       const toolBlocks: Map<string, ToolUseBlock> = new Map();
-      // Changed: Sequential list of all content (text and tools) in order received
-      const orderedContent: Array<{ type: 'text' | 'tool'; content?: string; toolBlock?: ToolUseBlock; toolUseId?: string }> = [];
+      // Changed: Sequential list of all content (text, tools, and transfers) in order received
+      const orderedContent: Array<{ type: 'text' | 'tool' | 'transfer'; content?: string; toolBlock?: ToolUseBlock; toolUseId?: string; agentName?: string }> = [];
       let currentTextBlock: { type: 'text'; content: string } | null = null;
       let metadata: MessageMetadata = {};
 
@@ -82,6 +82,9 @@ export function ChatProvider({ children }: ChatProviderProps) {
           if (typeof event !== 'object' || event === null) {
             continue
           }
+
+          // Debug: Log event structure
+          console.log('[useChat] Event received:', JSON.stringify(event).substring(0, 200))
 
           // Handle nested event structure: {event: {contentBlockDelta: {delta: {text: "..."}}}}
           if ('event' in event && event.event && typeof event.event === 'object') {
@@ -192,6 +195,66 @@ export function ChatProvider({ children }: ChatProviderProps) {
               currentTextBlock = { type: 'text', content: '' };
             }
             currentTextBlock.content += event.data;
+          }
+          // Handle host agent format: {content: {parts: [{text: "..."}]}}
+          // Mimics test/connect_agent.py lines 230-243
+          else if ('content' in event && typeof event.content === 'object' && event.content !== null) {
+            // IMPORTANT: Check for transfer action FIRST before processing content
+            // If event has both content and transfer, we need to handle transfer first
+            let hasTransfer = false;
+            if ('actions' in event && typeof event.actions === 'object' && event.actions !== null) {
+              const actions = event.actions as any;
+              if (actions.transfer_to_agent && typeof actions.transfer_to_agent === 'string') {
+                // Finalize current text block if exists (before transfer)
+                if (currentTextBlock && currentTextBlock.content) {
+                  orderedContent.push({ ...currentTextBlock });
+                  currentTextBlock = null;
+                }
+
+                // Add transfer block
+                orderedContent.push({
+                  type: 'transfer',
+                  agentName: actions.transfer_to_agent,
+                });
+
+                hasTransfer = true;
+              }
+            }
+
+            // Now process content (this will be AFTER the transfer block if there was one)
+            const content = event.content as any;
+            if (content.parts && Array.isArray(content.parts)) {
+              for (const part of content.parts) {
+                if (part.text && typeof part.text === 'string') {
+                  accumulatedResponse += part.text;
+
+                  // Accumulate in current text block (new block if we just did a transfer)
+                  if (!currentTextBlock) {
+                    currentTextBlock = { type: 'text', content: '' };
+                  }
+                  currentTextBlock.content += part.text;
+                }
+              }
+            }
+          }
+
+          // Handle transfer_to_agent action for events that don't have content
+          // (This handles the case where transfer comes in a separate event)
+          else if ('actions' in event && typeof event.actions === 'object' && event.actions !== null) {
+            const actions = event.actions as any;
+            if (actions.transfer_to_agent && typeof actions.transfer_to_agent === 'string') {
+              // Finalize current text block if exists
+              if (currentTextBlock && currentTextBlock.content) {
+                orderedContent.push({ ...currentTextBlock });
+                currentTextBlock = null;
+              }
+
+              // Add transfer block
+              orderedContent.push({
+                type: 'transfer',
+                agentName: actions.transfer_to_agent,
+              });
+            }
           }
 
           // Handle message event (contains complete tool information)
@@ -345,6 +408,11 @@ export function ChatProvider({ children }: ChatProviderProps) {
                   toolBlock: latestToolBlock,
                 });
               }
+            } else if (item.type === 'transfer' && item.agentName) {
+              orderedContentBlocks.push({
+                type: 'transfer',
+                agentName: item.agentName,
+              });
             }
           }
 
@@ -411,6 +479,11 @@ export function ChatProvider({ children }: ChatProviderProps) {
                 toolBlock: latestToolBlock,
               });
             }
+          } else if (item.type === 'transfer' && item.agentName) {
+            finalContentBlocks.push({
+              type: 'transfer',
+              agentName: item.agentName,
+            });
           }
         }
 
@@ -473,7 +546,7 @@ export function ChatProvider({ children }: ChatProviderProps) {
   );
 
   const initializeConversation = useCallback(
-    async (email: string, bearerToken: string, actorId: string) => {
+    async (bearerToken: string, actorId: string) => {
       const defaultPrompt = `Hi, how are you doing?`;
       await sendMessage(defaultPrompt, bearerToken, actorId);
     },

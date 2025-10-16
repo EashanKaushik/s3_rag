@@ -1,8 +1,12 @@
+import os
+from dotenv import load_dotenv
 from google.adk.sessions import InMemorySessionService
 from google.adk.runners import Runner
 from google.genai import types
 from bedrock_agentcore import BedrockAgentCoreApp
 
+# Load environment variables from .env file
+load_dotenv()
 
 APP_NAME = "HostAgentA2A"
 

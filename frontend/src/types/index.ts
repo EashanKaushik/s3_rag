@@ -184,7 +184,8 @@ export type StreamingEvent =
 // Content block types for ordered display
 export type ContentBlock =
   | { type: 'text'; content: string }
-  | { type: 'tool'; toolBlock: ToolUseBlock };
+  | { type: 'tool'; toolBlock: ToolUseBlock }
+  | { type: 'transfer'; agentName: string };
 
 // Message types
 export interface Message {

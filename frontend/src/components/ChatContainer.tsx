@@ -1,38 +1,35 @@
-import { useEffect, useRef, useState } from 'react'
-import { ChatMessage } from './ChatMessage'
-import { ChatInput } from './ChatInput'
-import { useChat } from '../hooks/useChat'
-import { fetchAuthSession } from 'aws-amplify/auth'
-import { Loader2 } from 'lucide-react'
+import { useEffect, useRef, useState } from 'react';
+import { ChatMessage } from './ChatMessage';
+import { ChatInput } from './ChatInput';
+import { useChat } from '../hooks/useChat';
+import { getBearerToken } from '../services/authService';
+import { Loader2 } from 'lucide-react';
 
-interface ChatContainerProps {
-  user: any
-}
+export function ChatContainer() {
+  const { messages, sendMessage, isStreaming, isInitialized, initializationError, initializeConversation } = useChat();
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const hasInitialized = useRef(false);
+  const [bearerToken, setBearerToken] = useState<string>('');
+  const [authError, setAuthError] = useState<string | null>(null);
 
-export function ChatContainer({ user }: ChatContainerProps) {
-  const { messages, sendMessage, isStreaming, isInitialized, initializationError, initializeConversation } = useChat()
-  const messagesEndRef = useRef<HTMLDivElement>(null)
-  const hasInitialized = useRef(false)
-  const [accessToken, setAccessToken] = useState<string>('')
-
-  // Fetch access token
+  // Fetch bearer token on mount
   useEffect(() => {
-    const getToken = async () => {
+    const fetchToken = async () => {
       try {
-        const session = await fetchAuthSession()
-        const token = session.tokens?.accessToken?.toString() || ''
-        setAccessToken(token)
+        const token = await getBearerToken();
+        setBearerToken(token);
       } catch (error) {
-        console.error('Error fetching auth session:', error)
+        console.error('Failed to get bearer token:', error);
+        setAuthError(error instanceof Error ? error.message : 'Failed to authenticate');
       }
-    }
-    getToken()
-  }, [])
+    };
+    fetchToken();
+  }, []);
 
   // Auto-scroll to bottom when new messages arrive
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [messages])
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [messages]);
 
   // Initialize conversation on first load
   useEffect(() => {
@@ -40,27 +37,38 @@ export function ChatContainer({ user }: ChatContainerProps) {
       isInitialized &&
       !hasInitialized.current &&
       messages.length === 0 &&
-      accessToken &&
-      user
+      bearerToken
     ) {
-      hasInitialized.current = true
-      const email = user.signInDetails?.loginId || user.username
+      hasInitialized.current = true;
       initializeConversation(
-        email,
-        accessToken,
-        user.username
-      )
+        bearerToken,
+        'guest'
+      );
     }
-  }, [isInitialized, messages.length, accessToken, user, initializeConversation])
+  }, [isInitialized, messages.length, bearerToken, initializeConversation]);
 
   const handleSendMessage = async (message: string) => {
-    if (!accessToken || !user) return
-
+    if (!bearerToken) {
+      console.error('No bearer token available');
+      return;
+    }
     await sendMessage(
       message,
-      accessToken,
-      user.username
-    )
+      bearerToken,
+      'guest'
+    );
+  };
+
+  if (authError) {
+    return (
+      <div className="flex-1 flex items-center justify-center">
+        <div className="text-center">
+          <p className="text-red-400 mb-2">❌ Authentication Error</p>
+          <p className="text-gray-400 text-sm">{authError}</p>
+          <p className="text-gray-400 text-sm mt-2">Please check your Cognito configuration in .env file</p>
+        </div>
+      </div>
+    );
   }
 
   if (initializationError) {
@@ -71,7 +79,7 @@ export function ChatContainer({ user }: ChatContainerProps) {
           <p className="text-gray-400 text-sm">Please check your CloudFormation stack configuration</p>
         </div>
       </div>
-    )
+    );
   }
 
   if (!isInitialized) {
@@ -82,7 +90,7 @@ export function ChatContainer({ user }: ChatContainerProps) {
           <p className="text-gray-400">Initializing agent...</p>
         </div>
       </div>
-    )
+    );
   }
 
   return (
@@ -91,8 +99,8 @@ export function ChatContainer({ user }: ChatContainerProps) {
       <div className="flex-1 overflow-y-auto px-4 py-6 min-h-0">
         <div className="max-w-4xl mx-auto space-y-4">
           {messages.map((message, index) => {
-            const isLastMessage = index === messages.length - 1
-            const isStreamingMessage = isStreaming && isLastMessage && message.role === 'assistant'
+            const isLastMessage = index === messages.length - 1;
+            const isStreamingMessage = isStreaming && isLastMessage && message.role === 'assistant';
 
             return (
               <ChatMessage
@@ -100,7 +108,7 @@ export function ChatContainer({ user }: ChatContainerProps) {
                 message={message}
                 isStreaming={isStreamingMessage}
               />
-            )
+            );
           })}
 
           {isStreaming && messages[messages.length - 1]?.role === 'user' && (
@@ -108,7 +116,7 @@ export function ChatContainer({ user }: ChatContainerProps) {
               <div className="bg-[#0b2545] text-gray-200 border border-[#298dff] rounded-2xl px-4 py-3 animate-thinking-pulse">
                 <div className="flex items-center gap-2">
                   <Loader2 className="w-4 h-4 animate-spin" />
-                  <span className="text-sm">💭 Customer Support Assistant is thinking...</span>
+                  <span className="text-sm">💭 Host Agent is thinking...</span>
                 </div>
               </div>
             </div>
@@ -126,5 +134,5 @@ export function ChatContainer({ user }: ChatContainerProps) {
         />
       </div>
     </div>
-  )
+  );
 }

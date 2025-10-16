@@ -1,35 +1,35 @@
-import { useState, KeyboardEvent } from 'react'
-import { Send } from 'lucide-react'
-import { Button } from './ui/button'
-import { cn } from '../utils'
+import { useState, KeyboardEvent } from 'react';
+import { Send } from 'lucide-react';
+import { Button } from './ui/button';
+import { cn } from '../utils';
 
 interface ChatInputProps {
-  onSend: (message: string) => void
-  disabled?: boolean
-  placeholder?: string
+  onSend: (message: string) => void;
+  disabled?: boolean;
+  placeholder?: string;
 }
 
 export function ChatInput({
   onSend,
   disabled = false,
-  placeholder = "Ask customer support assistant questions!",
+  placeholder = "Ask host ADK questions!",
 }: ChatInputProps) {
-  const [input, setInput] = useState('')
+  const [input, setInput] = useState('');
 
   const handleSend = () => {
-    const trimmed = input.trim()
+    const trimmed = input.trim();
     if (trimmed && !disabled) {
-      onSend(trimmed)
-      setInput('')
+      onSend(trimmed);
+      setInput('');
     }
-  }
+  };
 
   const handleKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault()
-      handleSend()
+      e.preventDefault();
+      handleSend();
     }
-  }
+  };
 
   return (
     <div className="border-t border-gray-700 bg-[#181c24] p-4">
@@ -57,5 +57,5 @@ export function ChatInput({
         </Button>
       </div>
     </div>
-  )
+  );
 }

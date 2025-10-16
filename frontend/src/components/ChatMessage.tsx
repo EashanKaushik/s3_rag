@@ -17,16 +17,6 @@ export const ChatMessage = memo(function ChatMessage({
   const contentWithLinks = makeUrlsClickable(message.content)
   const [showMetadata, setShowMetadata] = useState(false)
 
-  // Debug logging for assistant messages
-  if (!isUser && message.contentBlocks) {
-    console.log('[ChatMessage] Rendering assistant message with', message.contentBlocks.length, 'content blocks')
-    const toolBlocks = message.contentBlocks.filter(b => b.type === 'tool')
-    if (toolBlocks.length > 0) {
-      console.log('[ChatMessage] 🔧 Rendering', toolBlocks.length, 'tool blocks:',
-        toolBlocks.map(b => b.type === 'tool' ? b.toolBlock.name : ''))
-    }
-  }
-
   return (
     <div
       className={cn(
@@ -78,9 +68,25 @@ export const ChatMessage = memo(function ChatMessage({
                     </div>
                   );
                 } else if (block.type === 'tool') {
+                  // TODO: Tool blocks commented out for now
+                  // return (
+                  //   <div key={`tool-${block.toolBlock.toolUseId}`} className="mt-3">
+                  //     <ToolUseBlockComponent toolBlock={block.toolBlock} />
+                  //   </div>
+                  // );
+                  return null;
+                } else if (block.type === 'transfer' && 'agentName' in block) {
                   return (
-                    <div key={`tool-${block.toolBlock.toolUseId}`} className="mt-3">
-                      <ToolUseBlockComponent toolBlock={block.toolBlock} />
+                    <div key={`transfer-${index}`} className="my-3 rounded-lg border border-[#3a3f4b] bg-[#1a1d24] overflow-hidden">
+                      {/* Transfer Header */}
+                      <div className="px-3 py-2 bg-[#23272f] border-b border-[#3a3f4b] flex items-center gap-2">
+                        <Bot className="w-4 h-4 text-blue-400" />
+                        <span className="text-sm font-medium text-gray-200">Transferring to agent</span>
+                      </div>
+                      {/* Agent Name */}
+                      <div className="px-3 py-2">
+                        <span className="text-sm text-blue-300">{block.agentName}</span>
+                      </div>
                     </div>
                   );
                 }
