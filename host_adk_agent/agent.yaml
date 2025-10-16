@@ -2,7 +2,7 @@ AWSTemplateFormatVersion: '2010-09-09'
 Description: "AgentCore Runtime"
 
 Parameters:
-  GOOGLE_API_KEY:
+  GoogleApiKey:
     Type: String
     Description: Google API Key
 
@@ -744,7 +744,7 @@ Resources:
           ContainerUri: !Sub '${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/${AgentECRRepository}:build-1'
       ProtocolConfiguration: HTTP
       EnvironmentVariables:
-        GOOGLE_API_KEY: !Ref GOOGLE_API_KEY
+        GOOGLE_API_KEY: !Ref GoogleApiKey
         MCP_REGION: !Sub '${AWS::Region}'
       Tags:
         Name: !Sub '${AWS::StackName}-Agent-Runtime'
@@ -753,7 +753,7 @@ Resources:
   AgentRuntimeIdParameter:
     Type: AWS::SSM::Parameter
     Properties:
-      Name: '/websearchagent/agentcore/runtime-id'
+      Name: '/hostagent/agentcore/runtime-id'
       Description: 'BedrockAgentCore Runtime ID'
       Type: String
       Value: !GetAtt AgentRuntime.AgentRuntimeId

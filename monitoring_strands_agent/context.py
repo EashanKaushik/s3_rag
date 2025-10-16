@@ -20,12 +20,22 @@ class MonitoringAgentContext:
 
     # Context variables for request-scoped state
     _session_id_ctx: ContextVar[Optional[str]] = ContextVar("session_id", default=None)
-    _agent_identity_token_ctx: ContextVar[Optional[str]] = ContextVar("agent_identity_token", default=None)
-    _gateway_url_ctx: ContextVar[Optional[str]] = ContextVar("gateway_url", default=None)
+    _agent_identity_token_ctx: ContextVar[Optional[str]] = ContextVar(
+        "agent_identity_token", default=None
+    )
+    _gateway_url_ctx: ContextVar[Optional[str]] = ContextVar(
+        "gateway_url", default=None
+    )
     _agent_ctx: ContextVar[Optional[Agent]] = ContextVar("agent", default=None)
-    _gateway_client_ctx: ContextVar[Optional[MCPClient]] = ContextVar("gateway_client", default=None)
-    _a2a_server_ctx: ContextVar[Optional[A2AServer]] = ContextVar("a2a_server", default=None)
-    _monitoring_hooks_ctx: ContextVar[Optional[MonitoringMemoryHooks]] = ContextVar("monitoring_hooks", default=None)
+    _gateway_client_ctx: ContextVar[Optional[MCPClient]] = ContextVar(
+        "gateway_client", default=None
+    )
+    _a2a_server_ctx: ContextVar[Optional[A2AServer]] = ContextVar(
+        "a2a_server", default=None
+    )
+    _monitoring_hooks_ctx: ContextVar[Optional[MonitoringMemoryHooks]] = ContextVar(
+        "monitoring_hooks", default=None
+    )
 
     # Session ID management
     @classmethod

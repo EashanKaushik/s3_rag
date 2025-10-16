@@ -1,16 +1,19 @@
-from urllib.parse import quote
-from uuid import uuid4
-
-import httpx
 from a2a.client import ClientConfig, ClientFactory
 from a2a.types import TransportProtocol
 from bedrock_agentcore.identity.auth import requires_access_token
-
 from google.adk.agents.llm_agent import Agent
 from google.adk.agents.remote_a2a_agent import RemoteA2aAgent
+from urllib.parse import quote
+from uuid import uuid4
+import httpx
+import os
 
+IS_DOCKER = os.getenv("DOCKER_CONTAINER", "0") == "1"
 
-from host_adk_agent.utils import get_ssm_parameter, get_aws_info
+if IS_DOCKER:
+    from utils import get_ssm_parameter, get_aws_info
+else:
+    from host_adk_agent.utils import get_ssm_parameter, get_aws_info
 
 
 # AWS and agent configuration

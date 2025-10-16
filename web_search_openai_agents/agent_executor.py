@@ -65,7 +65,9 @@ class WebSearchAgentExecutor(AgentExecutor):
                     logger.info(f"Stream event type: {event_type}")
 
                     # Only handle raw_response_event with ResponseTextDeltaEvent
-                    if event_type == "raw_response_event" and isinstance(event.data, ResponseTextDeltaEvent):
+                    if event_type == "raw_response_event" and isinstance(
+                        event.data, ResponseTextDeltaEvent
+                    ):
                         text_chunk = event.data.delta
                         if text_chunk:
                             accumulated_text += text_chunk
