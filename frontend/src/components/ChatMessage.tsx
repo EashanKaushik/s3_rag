@@ -3,6 +3,14 @@ import { Bot, User, ChevronDown, ChevronRight, Info } from 'lucide-react'
 import { cn, makeUrlsClickable, formatElapsedTime } from '../utils'
 import type { Message } from '../types'
 import { ToolUseBlockComponent } from './ToolUseBlock'
+import strandsIcon from '../icons/strands.png'
+import openaiSdkIcon from '../icons/openaisdk.png'
+
+// Map agent names to their icons
+const agentIcons: Record<string, string> = {
+  'monitor_agent': strandsIcon,
+  'websearch_agent': openaiSdkIcon,
+}
 
 interface ChatMessageProps {
   message: Message
@@ -76,6 +84,7 @@ export const ChatMessage = memo(function ChatMessage({
                   // );
                   return null;
                 } else if (block.type === 'transfer' && 'agentName' in block) {
+                  const agentIcon = agentIcons[block.agentName];
                   return (
                     <div key={`transfer-${index}`} className="my-3 rounded-lg border border-[#3a3f4b] bg-[#1a1d24] overflow-hidden">
                       {/* Transfer Header */}
@@ -83,8 +92,11 @@ export const ChatMessage = memo(function ChatMessage({
                         <Bot className="w-4 h-4 text-blue-400" />
                         <span className="text-sm font-medium text-gray-200">Transferring to agent</span>
                       </div>
-                      {/* Agent Name */}
-                      <div className="px-3 py-2">
+                      {/* Agent Name with Icon */}
+                      <div className="px-3 py-2 flex items-center gap-2">
+                        {agentIcon && (
+                          <img src={agentIcon} alt={block.agentName} className="w-5 h-5 object-contain" />
+                        )}
                         <span className="text-sm text-blue-300">{block.agentName}</span>
                       </div>
                     </div>

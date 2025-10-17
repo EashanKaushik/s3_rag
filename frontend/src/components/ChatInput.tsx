@@ -32,7 +32,7 @@ export function ChatInput({
   };
 
   return (
-    <div className="border-t border-gray-700 bg-[#181c24] p-4">
+    <div className="border-t border-gray-700 bg-[#1a1e27] p-4 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.3)]">
       <div className="max-w-4xl mx-auto flex gap-2">
         <textarea
           value={input}
