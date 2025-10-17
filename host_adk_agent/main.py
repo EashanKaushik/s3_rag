@@ -40,9 +40,12 @@ async def call_agent(payload: dict, context):
 
         # Create root agent once - LazyClientFactory creates fresh httpx clients
         # on each A2A invocation in the current event loop context
-        root_agent = getroot_agent(session_id=session_id, actor_id=actor_id)
+        root_agent, agent_card = getroot_agent(session_id=session_id, actor_id=actor_id)
+
+        yield agent_card
 
     query = payload.get("prompt")
+
     if not query:
         raise KeyError("'prompt' field is required in payload")
 

@@ -1,3 +1,4 @@
+import asyncio
 import uuid
 from a2a.client import ClientConfig, ClientFactory
 from a2a.types import TransportProtocol
@@ -176,10 +177,36 @@ Focus exclusively on AWS-related monitoring and operations tasks.""",
         sub_agents=[monitor_agent, websearch_agent],
     )
 
-    return root_agent
+    async def get_agents_cards():
+        agents_info = {}
+        sub_agents = root_agent.sub_agents
+
+        for agent in sub_agents:
+            agent_data = {}
+
+            # Access the source URL before resolution
+            if hasattr(agent, "_agent_card_source"):
+                agent_data["agent_card_url"] = agent._agent_card_source
+
+            # Ensure resolution and access full agent card
+            if hasattr(agent, "_ensure_resolved"):
+                await agent._ensure_resolved()
+
+                if hasattr(agent, "_agent_card") and agent._agent_card:
+                    card = agent._agent_card
+                    agent_data["agent_card"] = card.model_dump(exclude_none=True)
+
+            agents_info[agent.name] = agent_data
+
+        return agents_info
+
+    # Get agents cards info
+    agents_cards = asyncio.run(get_agents_cards())
+
+    return root_agent, agents_cards
 
 
 if not IS_DOCKER:
     session_id = str(uuid.uuid4())
     actor_id = "webadk"
-    root_agent = getroot_agent(session_id=session_id, actor_id=actor_id)
+    root_agent, _ = getroot_agent(session_id=session_id, actor_id=actor_id)

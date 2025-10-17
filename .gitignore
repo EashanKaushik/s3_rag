@@ -218,3 +218,5 @@ __marimo__/
 params.json
 .agentcore.json
 monitoring_strands_agent/tests/
+temp.py
+temp_agent.py
