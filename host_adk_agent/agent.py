@@ -1,3 +1,4 @@
+import uuid
 from a2a.client import ClientConfig, ClientFactory
 from a2a.types import TransportProtocol
 from bedrock_agentcore.identity.auth import requires_access_token
@@ -32,43 +33,89 @@ WEBSEARCH_AGENT_ARN = (
 )
 
 
-def _create_client_factory(provider_name: str, agent_arn: str) -> ClientFactory:
-    """Create an authenticated client factory for an agent."""
+def _create_client_factory(provider_name: str, session_id: str, actor_id: str):
+    """Create a lazy client factory that creates fresh httpx clients on demand."""
 
-    @requires_access_token(
-        provider_name=provider_name,
-        scopes=[],
-        auth_flow="M2M",
-        into="bearer_token",
-        force_authentication=True,
-    )
-    def _create(bearer_token: str = str()) -> ClientFactory:
-        headers = {
-            "Authorization": f"Bearer {bearer_token}",
-            "X-Amzn-Bedrock-AgentCore-Runtime-Session-Id": str(uuid4()),
-            # TODO: Actor Id
-            "X-Amzn-Bedrock-AgentCore-Runtime-User-Id": "ActorID",
-        }
+    def _get_authenticated_client() -> httpx.AsyncClient:
+        """Create a fresh httpx client with authentication in current event loop."""
 
-        # Create httpx client with limits to prevent connection pool exhaustion
-        httpx_client = httpx.AsyncClient(
-            timeout=httpx.Timeout(timeout=300.0),
-            headers=headers,
-            limits=httpx.Limits(max_keepalive_connections=5, max_connections=10),
+        @requires_access_token(
+            provider_name=provider_name,
+            scopes=[],
+            auth_flow="M2M",
+            into="bearer_token",
+            force_authentication=True,
         )
+        def _create_client(bearer_token: str = str()) -> httpx.AsyncClient:
+            headers = {
+                "Authorization": f"Bearer {bearer_token}",
+                "X-Amzn-Bedrock-AgentCore-Runtime-Session-Id": session_id,
+                # TODO: Actor Id
+                "X-Amzn-Bedrock-AgentCore-Runtime-User-Id": actor_id,
+            }
 
-        config = ClientConfig(
-            httpx_client=httpx_client,
-            streaming=False,
-            supported_transports=[TransportProtocol.jsonrpc],
-        )
+            return httpx.AsyncClient(
+                timeout=httpx.Timeout(timeout=300.0),
+                headers=headers,
+                limits=httpx.Limits(max_keepalive_connections=5, max_connections=10),
+            )
 
-        return ClientFactory(config=config)
+        return _create_client()
 
-    return _create()
+    class LazyClientFactory:
+        """Factory that creates fresh httpx clients on each create() call."""
+
+        def __init__(self):
+            # Create an authenticated httpx client for agent card resolution
+            # This will be used by RemoteA2aAgent._ensure_httpx_client()
+            initial_client = _get_authenticated_client()
+
+            base_config = ClientConfig(
+                httpx_client=initial_client,
+                streaming=False,
+                supported_transports=[TransportProtocol.jsonrpc],
+            )
+            self._base_factory = ClientFactory(config=base_config)
+
+        @property
+        def _config(self):
+            """Expose _config for RemoteA2aAgent."""
+            return self._base_factory._config
+
+        @property
+        def _registry(self):
+            """Expose _registry for RemoteA2aAgent."""
+            return self._base_factory._registry
+
+        @property
+        def _consumers(self):
+            """Expose _consumers for RemoteA2aAgent."""
+            return self._base_factory._consumers
+
+        def register(self, label, generator):
+            """Forward register calls to base factory."""
+            return self._base_factory.register(label, generator)
+
+        def create(self, agent_card):
+            """Create a fresh httpx client in current event loop and return A2AClient."""
+            # Create fresh httpx client in the current event loop context
+            httpx_client = _get_authenticated_client()
+
+            # Create new config with fresh client
+            fresh_config = ClientConfig(
+                httpx_client=httpx_client,
+                streaming=False,
+                supported_transports=[TransportProtocol.jsonrpc],
+            )
+
+            # Create a new factory with the fresh client and delegate to it
+            fresh_factory = ClientFactory(config=fresh_config)
+            return fresh_factory.create(agent_card)
+
+    return LazyClientFactory()
 
 
-def getroot_agent():
+def getroot_agent(session_id: str, actor_id: str):
     """
     Lazy initialization of the root agent.
     This is called inside the entrypoint where workload identity is available.
@@ -85,7 +132,9 @@ def getroot_agent():
         description="Agent that handles monitoring tasks.",
         agent_card=monitor_agent_card_url,
         a2a_client_factory=_create_client_factory(
-            MONITOR_PROVIDER_NAME, MONITOR_AGENT_ARN
+            provider_name=MONITOR_PROVIDER_NAME,
+            session_id=session_id,
+            actor_id=actor_id,
         ),
     )
 
@@ -100,7 +149,9 @@ def getroot_agent():
         description="Web search agent for finding AWS solutions, documentation, and best practices.",
         agent_card=websearch_agent_card_url,
         a2a_client_factory=_create_client_factory(
-            WEBSEARCH_PROVIDER_NAME, WEBSEARCH_AGENT_ARN
+            provider_name=WEBSEARCH_PROVIDER_NAME,
+            session_id=session_id,
+            actor_id=actor_id,
         ),
     )
 
@@ -129,4 +180,6 @@ Focus exclusively on AWS-related monitoring and operations tasks.""",
 
 
 if not IS_DOCKER:
-    root_agent = getroot_agent()
+    session_id = str(uuid.uuid4())
+    actor_id = "webadk"
+    root_agent = getroot_agent(session_id=session_id, actor_id=actor_id)

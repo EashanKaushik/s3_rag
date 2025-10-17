@@ -14,24 +14,14 @@ app = BedrockAgentCoreApp()
 
 session_service = InMemorySessionService()
 
+root_agent = None
+
 
 @app.entrypoint
 async def call_agent(payload: dict, context):
-    # Import agent creation inside entrypoint so workload identity is available
-    from agent import getroot_agent
-
-    # Recreate the root agent on each invocation to avoid event loop issues
-    # This ensures fresh httpx clients with valid event loop references
-    root_agent = getroot_agent()
-
-    query = payload.get("prompt")
-    if not query:
-        raise KeyError("'prompt' field is required in payload")
+    global root_agent
 
     session_id = context.session_id
-
-    if not session_id:
-        raise Exception("Context session_id is not set")
 
     # actor_id = request_headers["x-amzn-bedrock-agentCore-runtime-custom-actor"]
 
@@ -39,16 +29,31 @@ async def call_agent(payload: dict, context):
     #     raise Exception("Actor id is not is not set")
     # TODO: Actor Id
     # Ensure session exists before running
-    user_id = "Actor 1"
+    actor_id = "Actor1"
+
+    if not session_id:
+        raise Exception("Context session_id is not set")
+
+    if not root_agent:
+        # Import agent creation inside entrypoint so workload identity is available
+        from agent import getroot_agent
+
+        # Create root agent once - LazyClientFactory creates fresh httpx clients
+        # on each A2A invocation in the current event loop context
+        root_agent = getroot_agent(session_id=session_id, actor_id=actor_id)
+
+    query = payload.get("prompt")
+    if not query:
+        raise KeyError("'prompt' field is required in payload")
 
     in_memory_session = session_service.get_session_sync(
-        app_name=APP_NAME, user_id=user_id, session_id=session_id
+        app_name=APP_NAME, user_id=actor_id, session_id=session_id
     )
 
     if not in_memory_session:
         # Session doesn't exist, create it
         _ = session_service.create_session_sync(
-            app_name=APP_NAME, user_id=user_id, session_id=session_id
+            app_name=APP_NAME, user_id=actor_id, session_id=session_id
         )
 
     runner = Runner(
@@ -58,7 +63,9 @@ async def call_agent(payload: dict, context):
     content = types.Content(role="user", parts=[types.Part(text=query)])
 
     # Use async run to properly maintain event loop across invocations
-    async for event in runner.run_async(user_id=user_id, session_id=session_id, new_message=content):
+    async for event in runner.run_async(
+        user_id=actor_id, session_id=session_id, new_message=content
+    ):
         yield event
 
 
