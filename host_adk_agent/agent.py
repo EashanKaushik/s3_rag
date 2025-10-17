@@ -50,8 +50,11 @@ def _create_client_factory(provider_name: str, agent_arn: str) -> ClientFactory:
             "X-Amzn-Bedrock-AgentCore-Runtime-User-Id": "ActorID",
         }
 
+        # Create httpx client with limits to prevent connection pool exhaustion
         httpx_client = httpx.AsyncClient(
-            timeout=httpx.Timeout(timeout=300.0), headers=headers
+            timeout=httpx.Timeout(timeout=300.0),
+            headers=headers,
+            limits=httpx.Limits(max_keepalive_connections=5, max_connections=10),
         )
 
         config = ClientConfig(

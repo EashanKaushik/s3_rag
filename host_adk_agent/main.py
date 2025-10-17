@@ -14,19 +14,15 @@ app = BedrockAgentCoreApp()
 
 session_service = InMemorySessionService()
 
-root_agent = None
-
 
 @app.entrypoint
 async def call_agent(payload: dict, context):
-    global root_agent
+    # Import agent creation inside entrypoint so workload identity is available
+    from agent import getroot_agent
 
-    if not root_agent:
-        # Import agent creation inside entrypoint so workload identity is available
-        from agent import getroot_agent
-
-        # Get or create the root agent (will be created on first call)
-        root_agent = getroot_agent()
+    # Recreate the root agent on each invocation to avoid event loop issues
+    # This ensures fresh httpx clients with valid event loop references
+    root_agent = getroot_agent()
 
     query = payload.get("prompt")
     if not query:
@@ -61,9 +57,8 @@ async def call_agent(payload: dict, context):
 
     content = types.Content(role="user", parts=[types.Part(text=query)])
 
-    events = runner.run(user_id=user_id, session_id=session_id, new_message=content)
-
-    for event in events:
+    # Use async run to properly maintain event loop across invocations
+    async for event in runner.arun(user_id=user_id, session_id=session_id, new_message=content):
         yield event
 
 
