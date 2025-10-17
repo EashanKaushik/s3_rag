@@ -1,4 +1,4 @@
-import os
+import asyncio
 from dotenv import load_dotenv
 from google.adk.sessions import InMemorySessionService
 from google.adk.runners import Runner
@@ -64,8 +64,10 @@ async def call_agent(payload: dict, context):
 
     events = runner.run(user_id=user_id, session_id=session_id, new_message=content)
 
-    async for event in events:
+    # Convert sync generator to async generator by yielding with await
+    for event in events:
         yield event
+        await asyncio.sleep(0)  # Allow other async tasks to run
 
 
 if __name__ == "__main__":
