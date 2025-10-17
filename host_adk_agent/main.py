@@ -58,7 +58,7 @@ async def call_agent(payload: dict, context):
     content = types.Content(role="user", parts=[types.Part(text=query)])
 
     # Use async run to properly maintain event loop across invocations
-    async for event in runner.arun(user_id=user_id, session_id=session_id, new_message=content):
+    async for event in runner.run_async(user_id=user_id, session_id=session_id, new_message=content):
         yield event
 
 
