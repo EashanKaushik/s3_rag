@@ -10,10 +10,10 @@ import os
 
 IS_DOCKER = os.getenv("DOCKER_CONTAINER", "0") == "1"
 
-from utils import get_ssm_parameter, get_aws_info
-# if IS_DOCKER:
-# else:
-#     from host_adk_agent.utils import get_ssm_parameter, get_aws_info
+if IS_DOCKER:
+    from utils import get_ssm_parameter, get_aws_info
+else:
+    from host_adk_agent.utils import get_ssm_parameter, get_aws_info
 
 
 # AWS and agent configuration
