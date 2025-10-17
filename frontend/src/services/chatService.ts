@@ -72,11 +72,13 @@ export async function* invokeAgentStream(
           // Try to parse as JSON
           try {
             const event = JSON.parse(dataContent) as StreamingEvent
+            console.log('[CHAT_SERVICE] Parsed SSE event:', event)
             yield event
           } catch (parseError) {
             // Not JSON, treat as plain text (backward compatibility)
             // Remove quotes that backend might add
             const plainText = dataContent.replace(/^"|"$/g, '')
+            console.log('[CHAT_SERVICE] Plain text SSE:', plainText)
             yield { data: plainText } as StreamingEvent
           }
           continue
@@ -85,10 +87,11 @@ export async function* invokeAgentStream(
         // Try to parse as JSON event (no data: prefix)
         try {
           const event = JSON.parse(trimmedLine) as StreamingEvent
+          console.log('[CHAT_SERVICE] Parsed JSON event:', event)
           yield event
         } catch (parseError) {
           // If not valid JSON, skip
-          console.warn('Failed to parse streaming event:', trimmedLine)
+          console.warn('[CHAT_SERVICE] Failed to parse streaming event:', trimmedLine)
         }
       }
     }

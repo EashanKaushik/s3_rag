@@ -116,12 +116,7 @@ def _create_client_factory(provider_name: str, session_id: str, actor_id: str):
     return LazyClientFactory()
 
 
-def getroot_agent(session_id: str, actor_id: str):
-    """
-    Lazy initialization of the root agent.
-    This is called inside the entrypoint where workload identity is available.
-    """
-
+def get_root_agent(session_id: str, actor_id: str):
     # Create monitor agent
     monitor_agent_card_url = (
         f"https://bedrock-agentcore.{region}.amazonaws.com/runtimes/"
@@ -177,6 +172,17 @@ Focus exclusively on AWS-related monitoring and operations tasks.""",
         sub_agents=[monitor_agent, websearch_agent],
     )
 
+    return root_agent
+
+
+async def get_agent_and_card(session_id: str, actor_id: str):
+    """
+    Lazy initialization of the root agent.
+    This is called inside the entrypoint where workload identity is available.
+    """
+
+    root_agent = get_root_agent(session_id=session_id, actor_id=actor_id)
+
     async def get_agents_cards():
         agents_info = {}
         sub_agents = root_agent.sub_agents
@@ -201,7 +207,7 @@ Focus exclusively on AWS-related monitoring and operations tasks.""",
         return agents_info
 
     # Get agents cards info
-    agents_cards = asyncio.run(get_agents_cards())
+    agents_cards = await get_agents_cards()
 
     return root_agent, agents_cards
 
@@ -209,4 +215,4 @@ Focus exclusively on AWS-related monitoring and operations tasks.""",
 if not IS_DOCKER:
     session_id = str(uuid.uuid4())
     actor_id = "webadk"
-    root_agent, _ = getroot_agent(session_id=session_id, actor_id=actor_id)
+    root_agent = get_root_agent(session_id=session_id, actor_id=actor_id)

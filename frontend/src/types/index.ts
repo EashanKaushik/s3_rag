@@ -223,12 +223,29 @@ export interface AuthState {
   error: string | null;
 }
 
+export interface AgentCardInfo {
+  agent_card: {
+    name: string;
+    description?: string;
+    url: string;
+    version?: string;
+    capabilities?: any;
+    [key: string]: any;
+  };
+  agent_card_url: string;
+}
+
+export interface AgentCardsMap {
+  [agentName: string]: AgentCardInfo;
+}
+
 export interface ChatState {
   messages: Message[];
   isStreaming: boolean;
   sessionId: string;
   agentArn: string;
   region: string;
+  agentCards?: AgentCardsMap;
 }
 
 export interface AppConfig {

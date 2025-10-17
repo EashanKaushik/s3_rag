@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, createContext, useContext, ReactNode } from 'react';
-import type { ChatState, Message, ToolUseBlock, MessageMetadata, StreamingEvent, ContentBlock } from '../types';
+import type { ChatState, Message, ToolUseBlock, MessageMetadata, StreamingEvent, ContentBlock, AgentCardsMap } from '../types';
 import { invokeAgentStream } from '../services/chatService';
 import { generateUUID } from '../utils';
 
@@ -68,6 +68,7 @@ export function ChatProvider({ children }: ChatProviderProps) {
       const orderedContent: Array<{ type: 'text' | 'tool' | 'transfer'; content?: string; toolBlock?: ToolUseBlock; toolUseId?: string; agentName?: string }> = [];
       let currentTextBlock: { type: 'text'; content: string } | null = null;
       let metadata: MessageMetadata = {};
+      let isFirstChunk = true;
 
       try {
         for await (const event of invokeAgentStream(
@@ -81,6 +82,41 @@ export function ChatProvider({ children }: ChatProviderProps) {
           // Type guard: ensure event is an object
           if (typeof event !== 'object' || event === null) {
             continue
+          }
+
+          // Handle first chunk as agent cards info
+          if (isFirstChunk) {
+            isFirstChunk = false;
+
+            console.log('[DEBUG] First chunk received:', JSON.stringify(event, null, 2));
+            console.log('[DEBUG] Event keys:', Object.keys(event));
+
+            // Check if this is agent cards data (no 'event' or 'content' fields, has agent_name keys)
+            const eventKeys = Object.keys(event);
+            const hasAgentData = eventKeys.some(key => {
+              const hasCard = typeof event[key] === 'object' &&
+                event[key] !== null &&
+                'agent_card' in event[key] &&
+                'agent_card_url' in event[key];
+              console.log(`[DEBUG] Checking key "${key}":`, hasCard);
+              return hasCard;
+            });
+
+            console.log('[DEBUG] Has agent data:', hasAgentData);
+
+            if (hasAgentData) {
+              // This is agent cards data
+              const agentCards = event as AgentCardsMap;
+              console.log('[DEBUG] Setting agent cards:', agentCards);
+              setChatState((prev) => ({
+                ...prev,
+                agentCards: agentCards,
+              }));
+              console.log('[DEBUG] Agent cards set successfully');
+              continue; // Skip to next event
+            } else {
+              console.log('[DEBUG] First chunk is not agent cards, processing as regular event');
+            }
           }
 
           // Handle nested event structure: {event: {contentBlockDelta: {delta: {text: "..."}}}}

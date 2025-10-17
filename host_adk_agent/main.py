@@ -36,11 +36,13 @@ async def call_agent(payload: dict, context):
 
     if not root_agent:
         # Import agent creation inside entrypoint so workload identity is available
-        from agent import getroot_agent
+        from agent import get_agent_and_card
 
         # Create root agent once - LazyClientFactory creates fresh httpx clients
         # on each A2A invocation in the current event loop context
-        root_agent, agent_card = getroot_agent(session_id=session_id, actor_id=actor_id)
+        root_agent, agent_card = await get_agent_and_card(
+            session_id=session_id, actor_id=actor_id
+        )
 
         yield agent_card
 
